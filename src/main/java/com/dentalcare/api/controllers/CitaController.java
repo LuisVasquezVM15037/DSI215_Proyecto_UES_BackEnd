@@ -23,8 +23,7 @@ import com.dentalcare.api.services.CitaService;
 // La anotación @RequestMapping define la ruta base para todas las solicitudes a
 // este controlador, en este caso "/api/citas".
 @RequestMapping("/api/citas")
-@CrossOrigin(origins = "http://localhost:5173") // Permitir solicitudes desde el backend en vite (que corre en otro
-                                                // puerto)
+@CrossOrigin(origins = "http://localhost:5173") // Permitir solicitudes desde el backend en vite (que corre en otro puerto)
 public class CitaController {
     // Inyectamos el servicio de Citas para delegar la lógica de negocio a la capa
     // de servicios, manteniendo el controlador enfocado en manejar las solicitudes
@@ -81,12 +80,45 @@ public class CitaController {
         return ResponseEntity.ok(citaCancelada); // Retorna HTTP 200 OK
     }
 
-    // Este método maneja las solicitudes PUT a la ruta "/api/citas/{id}" para actualizar una cita existente.
-    // Recibe el ID de la cita a actualizar como parte de la ruta y un DTO de solicitud con los nuevos datos en el cuerpo de la solicitud,
-    // delega la actualización al servicio y devuelve el DTO de respuesta con la cita actualizada
+    // Este método maneja las solicitudes PUT a la ruta "/api/citas/{id}" para
+    // actualizar una cita existente.
+    // Recibe el ID de la cita a actualizar como parte de la ruta y un DTO de
+    // solicitud con los nuevos datos en el cuerpo de la solicitud,
+    // delega la actualización al servicio y devuelve el DTO de respuesta con la
+    // cita actualizada
     @PutMapping("/{id}")
     public ResponseEntity<CitaResponseDTO> actualizarCita(@PathVariable Integer id,
             @RequestBody CitaRequestDTO request) {
         return ResponseEntity.ok(citaService.actualizarCita(id, request));
+    }
+
+    @PutMapping("/{id}/estado")
+    public org.springframework.http.ResponseEntity<?> cambiarEstadoCita(
+            @PathVariable Integer id,
+            @org.springframework.web.bind.annotation.RequestBody java.util.Map<String, String> body) {
+        try {
+            // Extraer el estado del JSON enviado por React y convertirlo al Enum
+            String estadoString = body.get("estado").toUpperCase();
+            com.dentalcare.api.models.enums.EstadoCita nuevoEstado = com.dentalcare.api.models.enums.EstadoCita
+                    .valueOf(estadoString);
+
+            // Llamar al servicio
+            CitaResponseDTO actualizada = citaService.actualizarEstado(id, nuevoEstado);
+            return org.springframework.http.ResponseEntity.ok(actualizada);
+        } catch (IllegalArgumentException e) {
+            return org.springframework.http.ResponseEntity.badRequest().body("Estado no válido: " + body.get("estado"));
+        } catch (Exception e) {
+            return org.springframework.http.ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    /**
+     * OBTENER UNA CITA POR ID
+     * GET http://localhost:8080/api/citas/{id}
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<CitaResponseDTO> obtenerCitaPorId(@PathVariable Integer id) {
+        CitaResponseDTO cita = citaService.obtenerPorId(id);
+        return ResponseEntity.ok(cita); // Retorna HTTP 200 OK con los datos de la cita
     }
 }

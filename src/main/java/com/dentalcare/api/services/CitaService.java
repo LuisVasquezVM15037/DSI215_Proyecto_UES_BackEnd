@@ -16,10 +16,16 @@ import com.dentalcare.api.repositories.CitaRepository;
 import com.dentalcare.api.repositories.OdontologoRepository;
 import com.dentalcare.api.repositories.PacienteRepository;
 
+//Con la anotación Service, esta clase se marca como un componente de servicio en el contexto de Spring,
+//lo que permite que Spring gestione su ciclo de vida y la inyección de dependencias.
+
+// La clase CitaService es responsable de contener la lógica de negocio relacionada con las citas,
+// como crear, obtener, actualizar y cancelar citas, así como mapear entre las entidades de
+//la base de datos y los DTOs que se utilizan para la comunicación con el frontend.
 @Service
 public class CitaService {
 
-    // Inyectamos los repositorios necesarios para acceder a la base de datos
+    //Con la anotacion Autowired, Spring Inyecta los repositorios necesarios para acceder a la base de datos
     @Autowired
     private CitaRepository citaRepository;
 
@@ -129,6 +135,14 @@ public class CitaService {
         return response;
     }
 
+    // Método para obtener una sola cita por su ID
+    public CitaResponseDTO obtenerPorId(Integer id) {
+        Cita cita = citaRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
+        
+        return mapearAResponse(cita);
+    }
+
     // Metodo para cancelar una cita, que actualiza el estado de la cita a CANCELADA
     // y guarda el motivo de cancelación en la base de datos.
 
@@ -169,5 +183,19 @@ public class CitaService {
 
         Cita actualizada = citaRepository.save(cita);
         return mapearAResponse(actualizada); // El método de mapeo manual que ya tienes
+    }
+
+    // Metodo especifico para cambiar SOLO el estado de la cita (ej. a FINALIZADA)
+    public CitaResponseDTO actualizarEstado(Integer id, com.dentalcare.api.models.enums.EstadoCita nuevoEstado) {
+        // Buscar la cita existente
+        Cita cita = citaRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
+
+        // Actualizar solo el estado
+        cita.setEstadoCita(nuevoEstado);
+
+        // Guardar y retornar el DTO
+        Cita citaActualizada = citaRepository.save(cita);
+        return mapearAResponse(citaActualizada);
     }
 }
