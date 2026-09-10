@@ -24,7 +24,7 @@ public class CorsConfig {
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         //aca definimos que es accesible desde el frontend y de cualquier origen con cualquier metodo de acceso
-        source.registerCorsConfiguration("/api/**", config);
+        source.registerCorsConfiguration("/**", config);
 
         return source;
     }
