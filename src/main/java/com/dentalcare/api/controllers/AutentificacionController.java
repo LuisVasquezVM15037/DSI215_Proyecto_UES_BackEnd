@@ -18,7 +18,6 @@ import java.util.Map;
 @RequestMapping("/api/auth")
 // Permite peticiones desde el servidor de desarrollo del frontend (Vite por defecto)
 // En produccion, reemplaza el origen con el dominio real del frontend
-@CrossOrigin(origins = "http://localhost:5173")
 public class AutentificacionController {
 
     private final AutentificacionService authService;
