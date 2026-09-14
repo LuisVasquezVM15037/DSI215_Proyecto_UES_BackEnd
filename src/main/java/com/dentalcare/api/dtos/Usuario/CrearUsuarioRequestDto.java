@@ -30,4 +30,7 @@ public class CrearUsuarioRequestDto {
 
     @NotNull(message = "El rol es obligatorio.")
     private Integer idRol;
+
+    private String especialidadOdontologo;
+    private String jvpoId;
 }

@@ -33,4 +33,7 @@ public class ActualizarUsuarioRequestDto {
 
     @NotNull(message = "El estado es obligatorio.")
     private Boolean esActivo;
+
+    private String especialidadOdontologo;
+    private String jvpoId;
 }

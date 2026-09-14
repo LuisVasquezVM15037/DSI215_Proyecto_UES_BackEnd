@@ -18,4 +18,6 @@ public class UsuarioResponseDto {
     private String usernameUsuario;
     private Boolean esActivo;
     private String rol;
+    private String especialidadOdontologo; // null si el rol no es Odontologo
+    private String jvpoId;                 // null si el rol no es Odontologo
 }

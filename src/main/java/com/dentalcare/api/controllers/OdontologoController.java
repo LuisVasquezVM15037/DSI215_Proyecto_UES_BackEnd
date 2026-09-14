@@ -31,14 +31,13 @@ public class OdontologoController {
     // GET /api/odontologos - Retorna todos los odontologos con datos aplanados
     @GetMapping
     public ResponseEntity<List<OdontologoResponseDto>> listarOdontologos() {
-        List<OdontologoResponseDto> response = odontologoRepository.findAll()
+        List<OdontologoResponseDto> response = odontologoRepository.findByUsuario_EsActivoTrue()
                 .stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(response);
     }
- 
-    // Convierte la entidad Odontologo a su DTO aplanando la relacion con Usuario
+
     private OdontologoResponseDto toDto(Odontologo o) {
         String nombreCompleto = o.getUsuario() != null
                 ? o.getUsuario().getNombreUsuario() + " " + o.getUsuario().getApellidoUsuario()
