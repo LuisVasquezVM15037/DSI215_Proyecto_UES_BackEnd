@@ -75,6 +75,9 @@ public class PacienteController {
         try {
             pacienteService.eliminarPaciente(id);
             return ResponseEntity.ok(Map.of("message", "Paciente eliminado correctamente."));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", ex.getMessage()));
         } catch (RuntimeException ex) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("message", ex.getMessage()));

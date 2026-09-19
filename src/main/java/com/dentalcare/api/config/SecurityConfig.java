@@ -1,36 +1,43 @@
 package com.dentalcare.api.config;
 
+import com.dentalcare.api.security.JwtAuthEntryPoint;
+import com.dentalcare.api.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 /**
- * Configuracion central de Spring Security.
- *
- * Dependencia requerida en pom.xml:
- *   <dependency>
- *     <groupId>org.springframework.boot</groupId>
- *     <artifactId>spring-boot-starter-security</artifactId>
- *   </dependency>
- *
- * NOTA: Por ahora la configuracion es permisiva (permitAll) para facilitar
- * el desarrollo. Una vez que el flujo de login funcione correctamente,
- * el siguiente paso es agregar el JwtAuthFilter para proteger los
- * endpoints privados (ver comentario al final de este archivo).
+ * Configuracion central de Spring Security con autenticacion basada en JWT.
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final JwtAuthEntryPoint jwtAuthEntryPoint;
+    private final CorsConfigurationSource corsConfigurationSource;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter,
+                          JwtAuthEntryPoint jwtAuthEntryPoint,
+                          CorsConfigurationSource corsConfigurationSource) {
+        this.jwtAuthFilter = jwtAuthFilter;
+        this.jwtAuthEntryPoint = jwtAuthEntryPoint;
+        this.corsConfigurationSource = corsConfigurationSource;
+    }
 
     /**
      * Define el algoritmo de hashing de passwords.
      * BCrypt con factor de costo 10 (balance entre seguridad y rendimiento).
-     * Este bean es inyectado en AuthService para verificar passwords.
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -39,32 +46,44 @@ public class SecurityConfig {
 
     /**
      * Cadena de filtros de seguridad HTTP.
-     *
-     * Configuracion actual (FASE DE DESARROLLO):
-     * - CSRF deshabilitado: la API es stateless y usa JWT, no sesiones de formulario
-     * - Sesiones deshabilitadas: STATELESS porque el estado vive en el JWT del cliente
-     * - Todos los endpoints publicos temporalmente para probar el login
-     *
-     * Para proteger rutas privadas, agregar el filtro JWT:
-     *   .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-     *   .authorizeHttpRequests(auth -> auth
-     *       .requestMatchers("/api/auth/**").permitAll()
-     *       .anyRequest().authenticated()
-     *   )
      */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // .cors(Customizer.withDefaults())
+            // Aplica la configuracion CORS global (CorsConfig)
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
 
+            // API Stateless con JWT, deshabilitamos CSRF
             .csrf(csrf -> csrf.disable())
+
+            // Manejo de errores de autenticacion (401 JSON)
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthEntryPoint))
+
+            // Sin sesion HTTP (stateless)
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
+
             .authorizeHttpRequests(auth -> auth
-                // En fase de desarrollo, permitimos todo para no bloquear las pruebas
-                .anyRequest().permitAll()
-            );
+                // Peticiones preflight CORS siempre permitidas
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                // Endpoints de autenticacion publicos
+                .requestMatchers("/api/auth/**").permitAll()
+
+                // Endpoint de errores de Spring Boot
+                .requestMatchers("/error").permitAll()
+
+                // Restricciones de roles administrativas
+                .requestMatchers("/api/usuarios/**").hasAnyRole("ADMIN", "GERENTE")
+                .requestMatchers("/api/registros-acceso/**").hasRole("ADMIN")
+
+                // El resto de endpoints requiere autenticacion con JWT
+                .anyRequest().authenticated()
+            )
+
+            // Registrar el filtro JWT antes del filtro estandar de autenticacion
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

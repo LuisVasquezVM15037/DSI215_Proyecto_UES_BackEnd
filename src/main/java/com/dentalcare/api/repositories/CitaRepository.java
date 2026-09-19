@@ -31,6 +31,8 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
     // como el método findAllByOrderByFechaCitaAscHoraInicioCitaAsc() que se muestra a continuación.
 
     List<Cita> findAllByOrderByFechaCitaAscHoraInicioCitaAsc();
+
+    boolean existsByPaciente_IdPaciente(Integer idPaciente);
     //este metodo se crea uniendo el nombre del metodo con la estructura de la consulta que se desea realizar,
     //en este caso se ordena por fecha de cita y hora de inicio de cita de forma ascendente.
     //Aunque el metodo no esta creado con una consulta SQL, Spring Data JPA lo interpreta y genera la consulta correspondiente para obtener los resultados deseados.

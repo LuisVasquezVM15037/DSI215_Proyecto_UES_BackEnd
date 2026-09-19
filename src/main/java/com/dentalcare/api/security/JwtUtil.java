@@ -53,6 +53,17 @@ public class JwtUtil {
     }
 
     /**
+     * Extrae el rol del usuario contenido en los claims del token.
+     */
+    public String extractRole(String token) {
+        try {
+            return parseClaims(token).get("rol", String.class);
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
      * Valida que el token tenga firma correcta y no haya expirado.
      *
      * @return true si el token es valido

@@ -3,6 +3,7 @@ package com.dentalcare.api.services;
 import com.dentalcare.api.dtos.Paciente.PacienteRequestDto;
 import com.dentalcare.api.dtos.Paciente.PacienteResponseDto;
 import com.dentalcare.api.models.Paciente;
+import com.dentalcare.api.repositories.CitaRepository;
 import com.dentalcare.api.repositories.PacienteRepository;
 import org.springframework.stereotype.Service;
 
@@ -17,10 +18,12 @@ import java.util.stream.Collectors;
 public class PacienteService {
 
     private final PacienteRepository pacienteRepository;
+    private final CitaRepository citaRepository;
 
     // Inyeccion por constructor: practica recomendada sobre @Autowired en campos
-    public PacienteService(PacienteRepository pacienteRepository) {
+    public PacienteService(PacienteRepository pacienteRepository, CitaRepository citaRepository) {
         this.pacienteRepository = pacienteRepository;
+        this.citaRepository = citaRepository;
     }
 
     // -------------------------------------------------------------------------
@@ -85,8 +88,12 @@ public class PacienteService {
     // ELIMINAR paciente
     // -------------------------------------------------------------------------
     public void eliminarPaciente(Integer id) {
-        if (!pacienteRepository.existsById(id))
+        if (!pacienteRepository.existsById(id)) {
             throw new RuntimeException("Paciente con id " + id + " no encontrado.");
+        }
+        if (citaRepository.existsByPaciente_IdPaciente(id)) {
+            throw new IllegalStateException("No se puede eliminar el paciente porque tiene citas registradas en su historial.");
+        }
         pacienteRepository.deleteById(id);
     }
 

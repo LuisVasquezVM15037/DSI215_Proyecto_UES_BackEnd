@@ -18,6 +18,7 @@ import com.dentalcare.api.dtos.Cita.CitaCancelacionDTO;
 import com.dentalcare.api.dtos.Cita.CitaRequestDTO;
 import com.dentalcare.api.dtos.Cita.CitaResponseDTO;
 import com.dentalcare.api.services.CitaService;
+import jakarta.validation.Valid;
 
 @RestController
 // La anotación @RequestMapping define la ruta base para todas las solicitudes a
@@ -73,7 +74,7 @@ public class CitaController {
     @PutMapping("/{id}/cancelar")
     public ResponseEntity<CitaResponseDTO> cancelarCita(
             @PathVariable Integer id,
-            @RequestBody CitaCancelacionDTO cancelacionRequest) {
+            @Valid @RequestBody CitaCancelacionDTO cancelacionRequest) {
 
         // Delegamos al servicio pasando el ID de la ruta y el motivo del body
         CitaResponseDTO citaCancelada = citaService.cancelarCita(id, cancelacionRequest);

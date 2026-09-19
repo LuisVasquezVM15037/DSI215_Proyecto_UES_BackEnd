@@ -147,13 +147,17 @@ public class CitaService {
     // y guarda el motivo de cancelación en la base de datos.
 
     public CitaResponseDTO cancelarCita(Integer id, CitaCancelacionDTO cancelacionRequest) {
+        if (cancelacionRequest == null || cancelacionRequest.getMotivoCancelacion() == null || cancelacionRequest.getMotivoCancelacion().trim().isEmpty()) {
+            throw new IllegalArgumentException("El motivo de cancelación es obligatorio.");
+        }
+
         // Buscar la cita existente
         Cita cita = citaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
 
         // Aplicar los cambios de estado y motivo
         cita.setEstadoCita(com.dentalcare.api.models.enums.EstadoCita.CANCELADA);
-        cita.setMotivoCancelacion(cancelacionRequest.getMotivoCancelacion());
+        cita.setMotivoCancelacion(cancelacionRequest.getMotivoCancelacion().trim());
 
         // Guardar los cambios en la BD (JPA hace un update automáticamente al encontrar
         // el ID)

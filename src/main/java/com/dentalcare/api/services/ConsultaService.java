@@ -241,6 +241,14 @@ public class ConsultaService {
                         detalle.setFrecuenciaPrescripcion(dto.getFrecuencia());
                         detalle.setDuracionPrescripcion(dto.getDuracion());
                         detalle.setIndicacionesPrescripcion(dto.getIndicaciones());
+
+                        if (dto.getIdPlanTratamiento() != null) {
+                                PlanTratamiento plan = planTratamientoRepository.findById(dto.getIdPlanTratamiento())
+                                                .orElseThrow(() -> new RuntimeException(
+                                                                "Plan de tratamiento no encontrado: " + dto.getIdPlanTratamiento()));
+                                detalle.setPlanTratamiento(plan);
+                        }
+
                         return detalle;
                 }).collect(Collectors.toList());
 

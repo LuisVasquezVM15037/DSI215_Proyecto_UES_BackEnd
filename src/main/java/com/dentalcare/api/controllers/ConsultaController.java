@@ -108,14 +108,19 @@ public class ConsultaController {
     }
 
     @PatchMapping("/hallazgo/{id}/estado")
-public ResponseEntity<?> actualizarEstadoHallazgo(
-        @PathVariable Integer id, 
-        @RequestBody Map<String, String> payload) {
-    
-    String nuevoEstado = payload.get("estado");
-    consultaService.actualizarEstadoHallazgo(id, nuevoEstado);
-    return ResponseEntity.ok().build();
-}
+    public ResponseEntity<?> actualizarEstadoHallazgo(
+            @PathVariable Integer id, 
+            @RequestBody Map<String, String> payload) {
+        try {
+            String nuevoEstado = (payload != null) ? payload.get("estado") : null;
+            PlanTratamientoResponseDTO resultado = consultaService.actualizarEstadoHallazgo(id, nuevoEstado);
+            return ResponseEntity.ok(resultado);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ex.getMessage()));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", ex.getMessage()));
+        }
+    }
 
     // --- PRESCRIPCION (PASO 3) ---
 
