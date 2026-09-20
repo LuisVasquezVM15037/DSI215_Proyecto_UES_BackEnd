@@ -1,19 +1,33 @@
 package com.dentalcare.api.services;
-import com.dentalcare.api.models.RegistroAcceso; //Import agregado para el pbi revisar accesos, se importa el modelo para poder crear registros al momento de logearse
-import com.dentalcare.api.repositories.RegistroAccesoRepository; //Import del repositorio para manejar el registro de accesos, se agg para PBI revisar accesos
-import java.time.LocalDateTime;  // Import para manejar fechas se agrega para PBI revisar accesos
+
 import com.dentalcare.api.dtos.Login.LoginRequestDto;
 import com.dentalcare.api.dtos.Login.LoginResponseDto;
+import com.dentalcare.api.models.RegistroAcceso;
 import com.dentalcare.api.models.Usuario;
+import com.dentalcare.api.repositories.RegistroAccesoRepository;
 import com.dentalcare.api.repositories.UsuarioRepository;
 import com.dentalcare.api.security.JwtUtil;
-
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+
 /**
- * Servicio que encapsula la logica de autenticacion de usuarios.
- * No expone detalles de implementacion al controlador.
+ * AutentificacionService
+ *
+ * <b>Propósito:</b>
+ * Encapsula la lógica de negocio del proceso de autenticación de usuarios.
+ * Valida credenciales, comprueba el estado activo de la cuenta, audita intentos
+ * de acceso exitosos y fallidos, y orquesta la emisión del token JWT.
+ *
+ * <b>Ubicación y Rol en la Arquitectura:</b>
+ * - Capa: Lógica de Negocio / Capa de Servicios (@Service).
+ * - Rol: Coordinador de seguridad a nivel de aplicación que desacopla la persistencia
+ *   y las utilidades criptográficas del controlador web.
+ *
+ * <b>Trazabilidad (Referencias):</b>
+ * - Invocado por: {@link com.dentalcare.api.controllers.AutentificacionController#login}.
+ * - Consume / Dependencias: {@link UsuarioRepository}, {@link PasswordEncoder}, {@link JwtUtil}, {@link RegistroAccesoRepository}.
  */
 @Service
 public class AutentificacionService {
@@ -21,66 +35,88 @@ public class AutentificacionService {
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    
-    private final RegistroAccesoRepository registroAccesoRepository; //Se agrega para el PBI revisar accesos 
+    private final RegistroAccesoRepository registroAccesoRepository;
 
-    // Inyeccion por constructor: practica recomendada sobre @Autowired en campos
+    /**
+     * Constructor para inyección de dependencias por inversión de control.
+     *
+     * @param usuarioRepository Repositorio para consulta de entidades de usuario.
+     * @param passwordEncoder Componente para cotejo de resúmenes criptográficos BCrypt.
+     * @param jwtUtil Utilidad para generación y firmado de tokens JWT.
+     * @param registroAccesoRepository Repositorio para persistir eventos de auditoría de acceso.
+     */
     public AutentificacionService(UsuarioRepository usuarioRepository,
-                       PasswordEncoder passwordEncoder,
-                       JwtUtil jwtUtil,
-                    RegistroAccesoRepository registroAccesoRepository) { //Modificación del constructor para inyectar el repo de registro de accesos, se agg para el PBI revisar accesos
+                                  PasswordEncoder passwordEncoder,
+                                  JwtUtil jwtUtil,
+                                  RegistroAccesoRepository registroAccesoRepository) {
         this.usuarioRepository = usuarioRepository;
-        this.passwordEncoder   = passwordEncoder;
-        this.jwtUtil           = jwtUtil;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
         this.registroAccesoRepository = registroAccesoRepository;
     }
 
-    // Se crea el método para guardar acceso para el PBI revisar accesos 
+    /**
+     * Registra un evento de intento de acceso en la pista de auditoría.
+     *
+     * <b>Propósito:</b>
+     * Almacenar de forma inmutable la marca temporal y el resultado del inicio de sesión
+     * para trazabilidad de seguridad y cumplimiento normativo.
+     *
+     * @param usuario Instancia del usuario que intentó autenticarse.
+     * @param exitoso Indicador booleano que señala si la autenticación fue correcta o fallida.
+     */
     private void registrarAcceso(Usuario usuario, boolean exitoso) {
-    RegistroAcceso registroAcceso = new RegistroAcceso();
-    registroAcceso.setUsuario(usuario);
-    registroAcceso.setEsExitoso(exitoso);
-    registroAcceso.setFechaAcceso(LocalDateTime.now());
+        RegistroAcceso registroAcceso = new RegistroAcceso();
+        registroAcceso.setUsuario(usuario);
+        registroAcceso.setEsExitoso(exitoso);
+        registroAcceso.setFechaAcceso(LocalDateTime.now());
 
-    registroAccesoRepository.save(registroAcceso);
-}
+        registroAccesoRepository.save(registroAcceso);
+    }
 
     /**
-     * Valida las credenciales del usuario y genera un JWT si son correctas.
+     * Ejecuta el flujo completo de autenticación de un usuario.
      *
-     * @param request DTO con username/email y password en texto plano
-     * @return DTO con el token JWT y datos basicos del usuario
-     * @throws RuntimeException con mensaje de error si la autenticacion falla
+     * <b>Propósito:</b>
+     * Localizar al usuario por nombre de cuenta o correo, verificar que no esté suspendido,
+     * comparar la contraseña en texto plano contra el hash BCrypt y emitir el JWT correspondiente.
+     *
+     * <b>Trazabilidad:</b>
+     * - Invocado por: POST /api/auth/login.
+     *
+     * @param request DTO que contiene el identificador (username/email) y la contraseña ingresada.
+     * @return DTO {@link LoginResponseDto} con el token JWT, nombre completo y rol del usuario.
+     * @throws RuntimeException Si el usuario no existe, la cuenta está inactiva o la contraseña es errónea.
      */
     public LoginResponseDto login(LoginRequestDto request) {
 
-        // Buscamos al usuario por username o email (la query acepta ambos)
+        // Se permite la autenticación mediante username o email indistintamente para flexibilidad del usuario
         Usuario usuario = usuarioRepository
                 .findByUsernameOrEmail(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("Credenciales incorrectas."));
 
-        // Verificamos que la cuenta este activa antes de cualquier otra validacion
+        // Se valida el estado lógico antes de procesar la contraseña para impedir el acceso a cuentas dadas de baja
         if (!usuario.getEsActivo()) {
-            registrarAcceso(usuario, false); //Se modifica el met. login para registrar el intento de acceso fallido PBI revisar accesos. 
+            registrarAcceso(usuario, false);
             throw new RuntimeException("La cuenta se encuentra desactivada. Contacta al administrador.");
         }
 
-        // Comparamos la password en texto plano contra el hash BCrypt almacenado en BD
+        // Se utiliza passwordEncoder.matches para evitar ataques de temporización (timing attacks)
         if (!passwordEncoder.matches(request.getPassword(), usuario.getPassworUsuario())) {
-              registrarAcceso(usuario, false); // Se agrega para PBI revisar accesos
-            // Mensaje generico intencional: no indicar si el error es el usuario o la password
+            registrarAcceso(usuario, false);
+            // Mensaje intencionalmente genérico para mitigar la enumeración de cuentas válidas
             throw new RuntimeException("Credenciales incorrectas.");
         }
 
-        registrarAcceso(usuario, true); //Se agrega para PBI revisar accesos, registrar el acceso exitoso.
+        // Registro de auditoría positivo tras superar todas las validaciones de seguridad
+        registrarAcceso(usuario, true);
 
-        // Obtenemos el nombre del rol como String para incluirlo en el JWT
+        // Se obtiene el valor textual del enum del rol para incluirlo como claim de autorización
         String nombreRol = usuario.getRol().getNombreRol().name();
 
-        // Generamos el JWT firmado con los datos del usuario autenticado
         String token = jwtUtil.generateToken(usuario.getUsernameUsuario(), nombreRol);
 
-        // Construimos el nombre completo para mostrar en el frontend
+        // Se construye el nombre compuesto para visualización inmediata en la interfaz de usuario
         String nombreCompleto = usuario.getNombreUsuario() + " " + usuario.getApellidoUsuario();
 
         return new LoginResponseDto(token, nombreCompleto, nombreRol);

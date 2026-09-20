@@ -3,7 +3,6 @@ package com.dentalcare.api.services;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.dentalcare.api.dtos.Cita.CitaResponseDTO;
@@ -12,162 +11,164 @@ import com.dentalcare.api.dtos.Cita.CitaRequestDTO;
 import com.dentalcare.api.models.Cita;
 import com.dentalcare.api.models.Odontologo;
 import com.dentalcare.api.models.Paciente;
+import com.dentalcare.api.models.enums.EstadoCita;
 import com.dentalcare.api.repositories.CitaRepository;
 import com.dentalcare.api.repositories.OdontologoRepository;
 import com.dentalcare.api.repositories.PacienteRepository;
 
-//Con la anotación Service, esta clase se marca como un componente de servicio en el contexto de Spring,
-//lo que permite que Spring gestione su ciclo de vida y la inyección de dependencias.
-
-// La clase CitaService es responsable de contener la lógica de negocio relacionada con las citas,
-// como crear, obtener, actualizar y cancelar citas, así como mapear entre las entidades de
-//la base de datos y los DTOs que se utilizan para la comunicación con el frontend.
+/**
+ * CitaService
+ *
+ * <b>Propósito:</b>
+ * Gestiona el ciclo de vida y las reglas de negocio de las citas odontológicas.
+ * Coordina la verificación de disponibilidad y existencia de profesionales y pacientes,
+ * el registro cronológico, las modificaciones de agenda, la cancelación justificada y
+ * las transiciones de estado de cada consulta.
+ *
+ * <b>Ubicación y Rol en la Arquitectura:</b>
+ * - Capa: Lógica de Negocio / Capa de Servicios (@Service).
+ * - Rol: Orquestador del dominio clínico que transforma peticiones de agenda en entidades
+ *   persistibles y proyecta las respuestas en DTOs planos para consumo del frontend.
+ *
+ * <b>Trazabilidad (Referencias):</b>
+ * - Invocado por: {@link com.dentalcare.api.controllers.CitaController}.
+ * - Consume / Dependencias: {@link CitaRepository}, {@link OdontologoRepository}, {@link PacienteRepository}.
+ */
 @Service
 public class CitaService {
 
-    //Con la anotacion Autowired, Spring Inyecta los repositorios necesarios para acceder a la base de datos
-    @Autowired
-    private CitaRepository citaRepository;
+    private final CitaRepository citaRepository;
+    private final OdontologoRepository odontologoRepository;
+    private final PacienteRepository pacienteRepository;
 
-    @Autowired
-    private OdontologoRepository odontologoRepository;
+    /**
+     * Constructor para inyección explícita de dependencias por inversión de control.
+     *
+     * @param citaRepository Repositorio para operaciones CRUD sobre la tabla de citas.
+     * @param odontologoRepository Repositorio para validación de existencia del odontólogo.
+     * @param pacienteRepository Repositorio para validación de existencia del paciente.
+     */
+    public CitaService(CitaRepository citaRepository,
+                       OdontologoRepository odontologoRepository,
+                       PacienteRepository pacienteRepository) {
+        this.citaRepository = citaRepository;
+        this.odontologoRepository = odontologoRepository;
+        this.pacienteRepository = pacienteRepository;
+    }
 
-    @Autowired
-    private PacienteRepository pacienteRepository;
-
-    // ====================================================
-    // Metodos publicos para la logica de negocio de Citas
-    // ====================================================
-
-    // este metodo se encarga de obtener todas las citas de la base de datos y
-    // convertirlas a DTOs para enviarlas al frontend
+    /**
+     * Recupera el listado completo de citas ordenadas cronológicamente.
+     *
+     * <b>Propósito:</b>
+     * Proveer a la vista del calendario o agenda del frontend la secuencia ordenada
+     * de citas por fecha y hora de inicio de forma ascendente.
+     *
+     * <b>Trazabilidad:</b>
+     * - Invocado por: GET /api/citas.
+     *
+     * @return Lista de {@link CitaResponseDTO} con los datos aplanados de cada cita.
+     */
     public List<CitaResponseDTO> obtenerTodas() {
-        // Obtenemos las entidades de la BD y las transformamos a Response DTOs
         List<Cita> citas = citaRepository.findAllByOrderByFechaCitaAscHoraInicioCitaAsc();
-        // Usamos Stream para mapear cada entidad a un DTO de respuesta
         return citas.stream()
                 .map(this::mapearAResponse)
                 .collect(Collectors.toList());
     }
 
-    // este metodo se encarga de crear una nueva cita a partir de los datos que
-    // vienen del frontend, validando que el odontologo y paciente existan,
-    // y luego guardando la cita en la base de datos
+    /**
+     * Registra una nueva cita clínica en el sistema.
+     *
+     * <b>Propósito:</b>
+     * Validar la existencia previa del odontólogo y del paciente involucrados antes de
+     * construir y persistir el registro de la cita.
+     *
+     * <b>Trazabilidad:</b>
+     * - Invocado por: POST /api/citas.
+     *
+     * @param request DTO {@link CitaRequestDTO} con identificadores y horarios requeridos.
+     * @return DTO {@link CitaResponseDTO} que representa la cita persistida en base de datos.
+     * @throws RuntimeException Si el odontólogo o el paciente especificados no existen.
+     */
     public CitaResponseDTO crearCita(CitaRequestDTO request) {
-        // Validar que las entidades relacionadas existan
+        // Se valida existencia previa de entidades foráneas para evitar violaciones de clave foránea a nivel de BD
         Odontologo odontologo = odontologoRepository.findById(request.getIdOdontologo())
                 .orElseThrow(() -> new RuntimeException("Error: Odontólogo no encontrado"));
-        // Validar que el paciente exista
+
         Paciente paciente = pacienteRepository.findById(request.getIdPaciente())
                 .orElseThrow(() -> new RuntimeException("Error: Paciente no encontrado"));
 
-        // Convertir el Request a Entidad
         Cita nuevaCita = mapearAEntidad(request, odontologo, paciente);
-
-        // Guardar en la base de datos
         Cita citaGuardada = citaRepository.save(nuevaCita);
 
-        // Convertir la Entidad guardada a Response y devolverla
         return mapearAResponse(citaGuardada);
     }
 
-    // ==================================================
-    // Metodos Privaos para mapeo entre Entidades y DTOs
-    // ==================================================
-
     /**
-     * Convierte los datos que vienen del Frontend (Request) en un objeto
-     * que la Base de Datos pueda entender (Entidad).
+     * Consulta una cita puntual a partir de su identificador primario.
+     *
+     * <b>Propósito:</b>
+     * Obtener los detalles consolidados de una cita para operaciones de consulta detallada o edición.
+     *
+     * <b>Trazabilidad:</b>
+     * - Invocado por: GET /api/citas/{id}.
+     *
+     * @param id Clave primaria de la cita buscada.
+     * @return DTO {@link CitaResponseDTO} con la información de la cita.
+     * @throws RuntimeException Si la cita no existe en la base de datos.
      */
-    private Cita mapearAEntidad(CitaRequestDTO request, Odontologo odontologo, Paciente paciente) {
-        // Creamos una nueva instancia de Cita y le asignamos los datos del Request
-        Cita cita = new Cita();
-        cita.setOdontologo(odontologo);
-        cita.setPaciente(paciente);
-        cita.setFechaCita(request.getFechaCita());
-        cita.setHoraInicioCita(request.getHoraInicioCita());
-        cita.setHoraFinCita(request.getHoraFinCita());
-
-        // Si el estado de la cita viene nulo desde el frontend, lo forzamos a
-        // PROGRAMADA por defecto
-        if (request.getEstadoCita() != null) {
-            cita.setEstadoCita(request.getEstadoCita());
-        } else {
-            cita.setEstadoCita(com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA);
-        }
-        return cita;
-    }
-
-    /**
-     * Convierte la Entidad de la Base de Datos en un objeto "plano"
-     * y seguro para enviar al Frontend (Response).
-     */
-    private CitaResponseDTO mapearAResponse(Cita cita) {
-        // Creamos una nueva instancia de CitaResponseDTO y le asignamos los datos de la
-        // Entidad
-        CitaResponseDTO response = new CitaResponseDTO();
-
-        // Datos propios de la cita
-        response.setIdCitas(cita.getIdCitas());
-        response.setFechaCita(cita.getFechaCita());
-        response.setHoraInicioCita(cita.getHoraInicioCita());
-        response.setHoraFinCita(cita.getHoraFinCita());
-        response.setEstadoCita(cita.getEstadoCita());
-        response.setMotivoCancelacion(cita.getMotivoCancelacion());
-
-        // los datos del paciente se aplanan para evitar enviar objetos anidados al
-        // frontend, lo que puede causar problemas de serialización y seguridad
-        if (cita.getPaciente() != null) {
-            response.setIdPaciente(cita.getPaciente().getIdPaciente());
-            response.setNombreCompletoPaciente(
-                    cita.getPaciente().getNombrePaciente() + " " + cita.getPaciente().getApellidoPaciente());
-            // Agregamos el número de identidad del paciente al DTO de respuesta para que el
-            // frontend pueda mostrarlo sin necesidad de hacer otra consulta
-            response.setNumeroIdentidadPaciente(cita.getPaciente().getNumeroIdentidadPaciente());
-        }
-
-        // Aplanando los datos del Odontólogo
-        if (cita.getOdontologo() != null) {
-            response.setIdOdontologo(cita.getOdontologo().getIdOdontologo());
-            response.setEspecialidadOdontologo(cita.getOdontologo().getEspecialidadOdontologo());
-        }
-
-        return response;
-    }
-
-    // Método para obtener una sola cita por su ID
     public CitaResponseDTO obtenerPorId(Integer id) {
         Cita cita = citaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
-        
+
         return mapearAResponse(cita);
     }
 
-    // Metodo para cancelar una cita, que actualiza el estado de la cita a CANCELADA
-    // y guarda el motivo de cancelación en la base de datos.
-
+    /**
+     * Realiza la cancelación justificada de una cita agendada.
+     *
+     * <b>Propósito:</b>
+     * Cambiar el estado a CANCELADA y registrar obligatoriamente el motivo de cancelación
+     * para mantener la trazabilidad administrativa.
+     *
+     * <b>Trazabilidad:</b>
+     * - Invocado por: PUT /api/citas/{id}/cancelar.
+     *
+     * @param id Clave primaria de la cita a cancelar.
+     * @param cancelacionRequest DTO con el texto explicativo de la cancelación.
+     * @return DTO {@link CitaResponseDTO} con el estado actualizado.
+     * @throws IllegalArgumentException Si el motivo de cancelación está vacío o es nulo.
+     * @throws RuntimeException Si la cita no es encontrada.
+     */
     public CitaResponseDTO cancelarCita(Integer id, CitaCancelacionDTO cancelacionRequest) {
+        // Validación defensiva en capa de servicio para asegurar integridad aun si se omitiese la validación en controlador
         if (cancelacionRequest == null || cancelacionRequest.getMotivoCancelacion() == null || cancelacionRequest.getMotivoCancelacion().trim().isEmpty()) {
             throw new IllegalArgumentException("El motivo de cancelación es obligatorio.");
         }
 
-        // Buscar la cita existente
         Cita cita = citaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
 
-        // Aplicar los cambios de estado y motivo
-        cita.setEstadoCita(com.dentalcare.api.models.enums.EstadoCita.CANCELADA);
+        cita.setEstadoCita(EstadoCita.CANCELADA);
         cita.setMotivoCancelacion(cancelacionRequest.getMotivoCancelacion().trim());
 
-        // Guardar los cambios en la BD (JPA hace un update automáticamente al encontrar
-        // el ID)
         Cita citaActualizada = citaRepository.save(cita);
-
-        // Mapear a Response y retornar
         return mapearAResponse(citaActualizada);
     }
 
-    // Metodo para actualizar una cita, que permite modificar los datos de la cita
+    /**
+     * Actualiza integralmente los datos de programación de una cita existente.
+     *
+     * <b>Propósito:</b>
+     * Modificar profesional, paciente, fechas y horarios de una cita previamente registrada.
+     *
+     * <b>Trazabilidad:</b>
+     * - Invocado por: PUT /api/citas/{id}.
+     *
+     * @param id Clave primaria de la cita a actualizar.
+     * @param request DTO con los nuevos parámetros de agendamiento.
+     * @return DTO {@link CitaResponseDTO} con la información modificada.
+     * @throws RuntimeException Si la cita, odontólogo o paciente no existen.
+     */
     public CitaResponseDTO actualizarCita(Integer id, CitaRequestDTO request) {
         Cita cita = citaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
@@ -177,7 +178,7 @@ public class CitaService {
 
         Paciente paciente = pacienteRepository.findById(request.getIdPaciente())
                 .orElseThrow(() -> new RuntimeException("Paciente no encontrado"));
-        // Actualizar los campos de la cita con los datos del request
+
         cita.setOdontologo(odontologo);
         cita.setPaciente(paciente);
         cita.setFechaCita(request.getFechaCita());
@@ -186,20 +187,96 @@ public class CitaService {
         cita.setEstadoCita(request.getEstadoCita());
 
         Cita actualizada = citaRepository.save(cita);
-        return mapearAResponse(actualizada); // El método de mapeo manual que ya tienes
+        return mapearAResponse(actualizada);
     }
 
-    // Metodo especifico para cambiar SOLO el estado de la cita (ej. a FINALIZADA)
-    public CitaResponseDTO actualizarEstado(Integer id, com.dentalcare.api.models.enums.EstadoCita nuevoEstado) {
-        // Buscar la cita existente
+    /**
+     * Modifica de manera atómica el estado de una cita médica.
+     *
+     * <b>Propósito:</b>
+     * Permitir transiciones rápidas de estado (ej. de PROGRAMADA a EN_PROGRESO o FINALIZADA)
+     * sin requerir el reenvío completo de los datos de agenda.
+     *
+     * <b>Trazabilidad:</b>
+     * - Invocado por: PUT /api/citas/{id}/estado.
+     *
+     * @param id Clave primaria de la cita.
+     * @param nuevoEstado Nuevo valor del enum {@link EstadoCita}.
+     * @return DTO {@link CitaResponseDTO} reflejando el cambio de estado.
+     * @throws RuntimeException Si la cita no existe.
+     */
+    public CitaResponseDTO actualizarEstado(Integer id, EstadoCita nuevoEstado) {
         Cita cita = citaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
 
-        // Actualizar solo el estado
         cita.setEstadoCita(nuevoEstado);
 
-        // Guardar y retornar el DTO
         Cita citaActualizada = citaRepository.save(cita);
         return mapearAResponse(citaActualizada);
+    }
+
+    /**
+     * Mapea un DTO de entrada hacia una entidad persistente Cita.
+     *
+     * <b>Propósito:</b>
+     * Desacoplar el contrato de transferencia HTTP del modelo relacional JPA.
+     *
+     * @param request Datos de entrada recibidos del cliente.
+     * @param odontologo Entidad del odontólogo previamente verificada.
+     * @param paciente Entidad del paciente previamente verificada.
+     * @return Instancia lista para inserción de {@link Cita}.
+     */
+    private Cita mapearAEntidad(CitaRequestDTO request, Odontologo odontologo, Paciente paciente) {
+        Cita cita = new Cita();
+        cita.setOdontologo(odontologo);
+        cita.setPaciente(paciente);
+        cita.setFechaCita(request.getFechaCita());
+        cita.setHoraInicioCita(request.getHoraInicioCita());
+        cita.setHoraFinCita(request.getHoraFinCita());
+
+        // Se asigna PROGRAMADA si no se especifica estado para garantizar consistencia en la máquina de estados
+        if (request.getEstadoCita() != null) {
+            cita.setEstadoCita(request.getEstadoCita());
+        } else {
+            cita.setEstadoCita(EstadoCita.PROGRAMADA);
+        }
+        return cita;
+    }
+
+    /**
+     * Proyecta una entidad Cita hacia un DTO plano de respuesta.
+     *
+     * <b>Propósito:</b>
+     * Aplanar las relaciones relacionales para evitar problemas de referencias circulares
+     * durante la serialización JSON de Jackson y no exponer entidades internas del dominio.
+     *
+     * @param cita Entidad de base de datos cargada.
+     * @return DTO {@link CitaResponseDTO} formateado para consumo de la capa de presentación.
+     */
+    private CitaResponseDTO mapearAResponse(Cita cita) {
+        CitaResponseDTO response = new CitaResponseDTO();
+
+        response.setIdCitas(cita.getIdCitas());
+        response.setFechaCita(cita.getFechaCita());
+        response.setHoraInicioCita(cita.getHoraInicioCita());
+        response.setHoraFinCita(cita.getHoraFinCita());
+        response.setEstadoCita(cita.getEstadoCita());
+        response.setMotivoCancelacion(cita.getMotivoCancelacion());
+
+        // Aplanamiento intencional de datos del paciente para consumo directo en tablas del cliente web
+        if (cita.getPaciente() != null) {
+            response.setIdPaciente(cita.getPaciente().getIdPaciente());
+            response.setNombreCompletoPaciente(
+                    cita.getPaciente().getNombrePaciente() + " " + cita.getPaciente().getApellidoPaciente());
+            response.setNumeroIdentidadPaciente(cita.getPaciente().getNumeroIdentidadPaciente());
+        }
+
+        // Aplanamiento de datos del odontólogo para evitar exponer credenciales o relaciones anidadas
+        if (cita.getOdontologo() != null) {
+            response.setIdOdontologo(cita.getOdontologo().getIdOdontologo());
+            response.setEspecialidadOdontologo(cita.getOdontologo().getEspecialidadOdontologo());
+        }
+
+        return response;
     }
 }

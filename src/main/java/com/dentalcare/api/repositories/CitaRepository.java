@@ -1,39 +1,50 @@
 package com.dentalcare.api.repositories;
 
 import com.dentalcare.api.models.Cita;
-
-import java.util.List;
-
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-//La anotación Repository indica que esta interfaz es un repositorio de Spring Data JPA, 
-// lo que permite que Spring gestione la implementación de esta interfaz y proporcione funcionalidades de acceso a datos para la entidad Cita.
+import java.util.List;
+
+/**
+ * CitaRepository
+ *
+ * <b>Propósito:</b>
+ * Provee la capa de acceso a datos para la entidad {@link Cita}.
+ * Expone operaciones de persistencia relacional estándar y métodos de consulta derivados
+ * basados en convenciones de nomenclatura de Spring Data JPA.
+ *
+ * <b>Ubicación y Rol en la Arquitectura:</b>
+ * - Capa: Acceso a Datos / Capa de Persistencia (@Repository).
+ * - Rol: Abstracción de acceso a la tabla 'cita' en MySQL que aísla las consultas SQL/JPQL
+ *   de las capas superiores de servicio.
+ *
+ * <b>Trazabilidad (Referencias):</b>
+ * - Invocado por: {@link com.dentalcare.api.services.CitaService},
+ *   {@link com.dentalcare.api.services.PacienteService} y {@link com.dentalcare.api.services.ConsultaService}.
+ * - Consume: Entidad {@link Cita}.
+ */
 @Repository
 public interface CitaRepository extends JpaRepository<Cita, Integer> {
-    //Los metodos que ya vienen incluidos en JpaRepository son:
-    // - save(S entity): Guarda una entidad en la base de datos.
-    // - delete(S entity): Elimina una entidad de la base de datos.
-    // - findById(ID id): Busca una entidad por su ID.
-    // - findAll(): Devuelve una lista de todas las entidades.
-    // - count(): Devuelve el número de entidades en la base de datos.
-    // - existsById(ID id): Verifica si una entidad con el ID dado existe en la base de datos.
-    // - deleteById(ID id): Elimina una entidad por su ID.
-    // - deleteAll(): Elimina todas las entidades de la base de datos.
-    // - findAllById(Iterable<ID> ids): Devuelve una lista de entidades por sus IDs.
-    // - saveAll(Iterable<S> entities): Guarda una lista de entidades en la base de datos.
-    // - deleteAllById(Iterable<ID> ids): Elimina una lista de entidades por sus IDs.
-    // - deleteAll(Iterable<? extends T> entities): Elimina una lista de entidades.
-    // Entre otros
-    
-    // Además de estos métodos predefinidos, se pueden definir métodos personalizados 
-    // utilizando la convención de nomenclatura de Spring Data JPA,
-    // como el método findAllByOrderByFechaCitaAscHoraInicioCitaAsc() que se muestra a continuación.
 
+    /**
+     * Recupera todas las citas ordenadas cronológicamente por fecha y hora de inicio de forma ascendente.
+     *
+     * <b>Propósito:</b>
+     * Servir a la agenda médica con el orden secuencial natural de los turnos de atención.
+     *
+     * @return Lista de entidades {@link Cita} ordenadas ascendentemente.
+     */
     List<Cita> findAllByOrderByFechaCitaAscHoraInicioCitaAsc();
 
+    /**
+     * Verifica la existencia de al menos una cita vinculada a un paciente específico.
+     *
+     * <b>Propósito:</b>
+     * Comprobar restricciones de clave foránea antes de una operación de eliminación de paciente.
+     *
+     * @param idPaciente Clave primaria del paciente a comprobar.
+     * @return true si el paciente posee citas en su historial; false si no tiene registros dependientes.
+     */
     boolean existsByPaciente_IdPaciente(Integer idPaciente);
-    //este metodo se crea uniendo el nombre del metodo con la estructura de la consulta que se desea realizar,
-    //en este caso se ordena por fecha de cita y hora de inicio de cita de forma ascendente.
-    //Aunque el metodo no esta creado con una consulta SQL, Spring Data JPA lo interpreta y genera la consulta correspondiente para obtener los resultados deseados.
 }

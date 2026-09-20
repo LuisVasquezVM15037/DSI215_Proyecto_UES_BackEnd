@@ -4,17 +4,28 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 /**
- * DTO de respuesta para Odontologo.
- * Aplana la relacion con Usuario para no exponer objetos anidados al frontend.
+ * Propósito: Objeto de transferencia de datos (DTO) de respuesta para la entidad Odontologo.
+ * Aplana la relación con Usuario para desacoplar el modelo relacional y simplificar el consumo en el frontend.
+ * 
+ * Ubicación y Rol: Capa de Presentación / DTO de Respuesta (Data Transfer Object).
+ * 
+ * Trazabilidad (Referencias):
+ * - Utilizado por: OdontologoController, UsuarioService.
+ * - Consumido por: Vistas de gestión de personal médico y asignación de doctores.
  */
 @Data
 @AllArgsConstructor
 public class OdontologoResponseDto {
 
+    /** Identificador primario del odontólogo */
     private Integer idOdontologo;
+
+    /** Rama o especialidad odontológica */
     private String especialidadOdontologo;
+
+    /** Identificador de registro en la JVPO */
     private String jvpoId;
 
-    // Datos del usuario asociado, aplanados para facilitar la renderizacion en el select
+    /** Nombre completo del usuario profesional asociado */
     private String nombreCompleto;
-}
+}
