@@ -47,6 +47,7 @@ public class PacienteService {
     // CREAR paciente
     // -------------------------------------------------------------------------
     public PacienteResponseDto crearPaciente(PacienteRequestDto request) {
+        validarReglasIdentidadYMinoridad(request);
 
         // Validamos que el numero de identidad no este ya registrado
         if (pacienteRepository.findByNumeroIdentidadPaciente(request.getNumeroIdentidadPaciente()).isPresent()) {
@@ -64,6 +65,7 @@ public class PacienteService {
     // EDITAR paciente
     // -------------------------------------------------------------------------
     public PacienteResponseDto actualizarPaciente(Integer id, PacienteRequestDto request) {
+        validarReglasIdentidadYMinoridad(request);
 
         // Verificamos que el paciente a editar exista
         Paciente paciente = pacienteRepository.findById(id)
@@ -79,6 +81,27 @@ public class PacienteService {
         mapRequestToEntity(request, paciente);
 
         return toResponseDto(pacienteRepository.save(paciente));
+    }
+
+    // -------------------------------------------------------------------------
+    // Validacion de minoridad y formato oficial de documento de identidad
+    // -------------------------------------------------------------------------
+    private void validarReglasIdentidadYMinoridad(PacienteRequestDto request) {
+        if (request.getFechaNacimientoPaciente() != null) {
+            int edad = java.time.Period.between(request.getFechaNacimientoPaciente(), java.time.LocalDate.now()).getYears();
+            if (edad < 18) {
+                // Menor de edad: El contacto de emergencia (Tutor / Responsable legal) es obligatorio
+                if (request.getContactoEmergencia() == null || request.getContactoEmergencia().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Para pacientes menores de edad (" + edad + " años), es obligatorio registrar el nombre y teléfono del tutor o responsable en contacto de emergencia.");
+                }
+            } else {
+                // Mayor de edad: Validar formato formal de DUI salvadoreño (8 dígitos, guion, 1 dígito)
+                String doc = request.getNumeroIdentidadPaciente() != null ? request.getNumeroIdentidadPaciente().trim() : "";
+                if (!doc.matches("^\\d{8}-\\d$")) {
+                    throw new IllegalArgumentException("Para pacientes mayores de edad, el DUI debe tener el formato oficial de 9 dígitos (00000000-0).");
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------------

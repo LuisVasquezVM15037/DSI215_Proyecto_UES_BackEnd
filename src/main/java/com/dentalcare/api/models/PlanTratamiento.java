@@ -20,7 +20,7 @@ public class PlanTratamiento {
     @JoinColumn(name = "id_evaluacion_clinica", nullable = false)
     private EvaluacionClinica evaluacionClinica;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private Integer piezaDental;
 
     @Enumerated(EnumType.STRING)

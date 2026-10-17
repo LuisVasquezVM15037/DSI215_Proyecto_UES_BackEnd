@@ -16,8 +16,7 @@ public class PlanTratamientoRequestDTO {
     @NotNull(message = "El id del tratamiento es obligatorio.")
     private Integer idTratamiento;
 
-    // Numero de pieza dental en notacion FDI (ej. 11, 21, 36)
-    @NotNull(message = "La pieza dental es obligatoria.")
+    // Numero de pieza dental en notacion FDI (ej. 11, 21, 36) - Opcional si es un procedimiento general (ej. limpieza)
     private Integer piezaDental;
 
     // Estado inicial del plan: por defecto PENDIENTE si no se envia
