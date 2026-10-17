@@ -280,7 +280,7 @@ DROP TABLE IF EXISTS `plan_tratamiento`;
 CREATE TABLE `plan_tratamiento` (
   `id_plan_tratamiento` int NOT NULL AUTO_INCREMENT,
   `estado_plan` enum('CANCELADO','COMPLETADO','EN_PROGRESO','OTRO','PENDIENTE','PROGRAMADO') NOT NULL,
-  `pieza_dental` int NOT NULL,
+  `pieza_dental` int DEFAULT NULL,
   `id_evaluacion_clinica` int NOT NULL,
   `id_tratamiento` int NOT NULL,
   PRIMARY KEY (`id_plan_tratamiento`),

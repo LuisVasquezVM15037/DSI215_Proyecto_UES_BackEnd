@@ -120,8 +120,8 @@ public class ConsultaService {
 
                 PlanTratamiento plan = new PlanTratamiento();
                 plan.setEvaluacionClinica(evaluacion);
-                plan.setTratamiento(tratamiento);
-                plan.setPiezaDental(request.getPiezaDental());
+                // Si es un tratamiento general (null), usamos 0 como valor centinela para compatibilidad con BDs donde la columna es NOT NULL
+                plan.setPiezaDental(request.getPiezaDental() != null ? request.getPiezaDental() : 0);
 
                 // Si no viene estado, usamos PENDIENTE como valor por defecto
                 try {
@@ -313,9 +313,10 @@ public class ConsultaService {
         // =========================================================================
 
         private PlanTratamientoResponseDTO toResponseDTO(PlanTratamiento plan) {
+                Integer pieza = (plan.getPiezaDental() == null || plan.getPiezaDental() == 0) ? null : plan.getPiezaDental();
                 return new PlanTratamientoResponseDTO(
                                 plan.getIdPlanTratamiento(),
-                                plan.getPiezaDental(),
+                                pieza,
                                 plan.getEstadoPlan().name(),
                                 plan.getTratamiento().getIdTratamiento(),
                                 plan.getTratamiento().getNombreTratamiento(),
