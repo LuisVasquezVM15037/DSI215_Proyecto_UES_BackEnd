@@ -120,6 +120,7 @@ public class ConsultaService {
 
                 PlanTratamiento plan = new PlanTratamiento();
                 plan.setEvaluacionClinica(evaluacion);
+                plan.setTratamiento(tratamiento);
                 // Si es un tratamiento general (null), usamos 0 como valor centinela para compatibilidad con BDs donde la columna es NOT NULL
                 plan.setPiezaDental(request.getPiezaDental() != null ? request.getPiezaDental() : 0);
 
