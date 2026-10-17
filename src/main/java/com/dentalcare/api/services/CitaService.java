@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.dentalcare.api.dtos.Cita.CitaResponseDTO;
 import com.dentalcare.api.dtos.Cita.CitaCancelacionDTO;
@@ -186,6 +187,7 @@ public class CitaService {
     }
 
     // Metodo especifico para cambiar SOLO el estado de la cita (ej. a FINALIZADA)
+    @Transactional
     public CitaResponseDTO actualizarEstado(Integer id, com.dentalcare.api.models.enums.EstadoCita nuevoEstado) {
         // Buscar la cita existente
         Cita cita = citaRepository.findById(id)

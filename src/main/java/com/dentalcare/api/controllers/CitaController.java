@@ -99,6 +99,10 @@ public class CitaController {
         try {
             // Extraer el estado del JSON enviado por React y convertirlo al Enum
             String estadoString = body.get("estado").toUpperCase();
+            if ("FINALIZADA".equals(estadoString)) {
+                // Compatibilidad total con la base de datos MySQL en linea que contiene 'COMPLETADA' en su enum
+                estadoString = "COMPLETADA";
+            }
             com.dentalcare.api.models.enums.EstadoCita nuevoEstado = com.dentalcare.api.models.enums.EstadoCita
                     .valueOf(estadoString);
 
@@ -106,9 +110,11 @@ public class CitaController {
             CitaResponseDTO actualizada = citaService.actualizarEstado(id, nuevoEstado);
             return org.springframework.http.ResponseEntity.ok(actualizada);
         } catch (IllegalArgumentException e) {
-            return org.springframework.http.ResponseEntity.badRequest().body("Estado no válido: " + body.get("estado"));
+            return org.springframework.http.ResponseEntity.badRequest()
+                    .body(java.util.Map.of("message", "Estado no válido: " + body.get("estado")));
         } catch (Exception e) {
-            return org.springframework.http.ResponseEntity.badRequest().body(e.getMessage());
+            return org.springframework.http.ResponseEntity.badRequest()
+                    .body(java.util.Map.of("message", e.getMessage() != null ? e.getMessage() : "Error al actualizar estado"));
         }
     }
 

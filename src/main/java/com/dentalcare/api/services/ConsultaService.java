@@ -209,8 +209,8 @@ public class ConsultaService {
 
         /**
          * Crea una prescripcion con sus detalles de medicamentos para una cita.
-         * Si ya existe una prescripcion para la cita, lanza error para evitar
-         * duplicados.
+         * Si ya existe una prescripcion para la cita, añade los nuevos detalles a la misma
+         * en lugar de fallar, permitiendo agregar medicamentos adicionales en cualquier momento.
          */
         @Transactional
         public PrescripcionResponseDTO crearPrescripcion(PrescripcionRequestDTO request) {
@@ -218,37 +218,45 @@ public class ConsultaService {
                 Cita cita = citaRepository.findById(request.getIdCita())
                                 .orElseThrow(() -> new RuntimeException("Cita no encontrada."));
 
-                // Validamos que no exista ya una prescripcion para esta cita
-                if (prescripcionRepository.findByCita_IdCitas(request.getIdCita()).isPresent()) {
-                        throw new RuntimeException("Ya existe una prescripcion para esta cita.");
-                }
+                // Si ya existe una prescripcion para esta cita, la reutilizamos para no duplicar cabecera
+                Prescripcion prescripcion = prescripcionRepository.findByCita_IdCitas(request.getIdCita())
+                                .orElseGet(() -> {
+                                        Prescripcion nueva = new Prescripcion();
+                                        nueva.setCita(cita);
+                                        nueva.setFechaPrescripcion(LocalDateTime.now());
+                                        return prescripcionRepository.save(nueva);
+                                });
 
-                // Creamos la cabecera de la prescripcion
-                Prescripcion prescripcion = new Prescripcion();
-                prescripcion.setCita(cita);
-                prescripcion.setFechaPrescripcion(LocalDateTime.now());
-                Prescripcion prescripcionGuardada = prescripcionRepository.save(prescripcion);
-
-                // Creamos cada linea de detalle (un medicamento por linea)
-                List<DetallePrescripcion> detalles = request.getDetalles().stream().map(dto -> {
+                // Creamos las lineas de detalle enviadas
+                List<DetallePrescripcion> nuevosDetalles = request.getDetalles().stream().map(dto -> {
                         Medicamento medicamento = medicamentoRepository.findById(dto.getIdMedicamento())
                                         .orElseThrow(() -> new RuntimeException(
                                                         "Medicamento no encontrado: " + dto.getIdMedicamento()));
 
                         DetallePrescripcion detalle = new DetallePrescripcion();
-                        detalle.setPrescripcion(prescripcionGuardada);
+                        detalle.setPrescripcion(prescripcion);
                         detalle.setMedicamento(medicamento);
                         detalle.setDosisPrescripcion(dto.getDosis());
                         detalle.setFrecuenciaPrescripcion(dto.getFrecuencia());
                         detalle.setDuracionPrescripcion(dto.getDuracion());
                         detalle.setIndicacionesPrescripcion(dto.getIndicaciones());
+
+                        // Asociamos al hallazgo / plan de tratamiento si viene especificado
+                        if (dto.getIdPlanTratamiento() != null) {
+                                planTratamientoRepository.findById(dto.getIdPlanTratamiento())
+                                                .ifPresent(detalle::setPlanTratamiento);
+                        }
+
                         return detalle;
                 }).collect(Collectors.toList());
 
-                detalleRepository.saveAll(detalles);
+                detalleRepository.saveAll(nuevosDetalles);
 
-                // Retornamos la prescripcion completa con sus detalles mapeados
-                return mapearPrescripcion(prescripcionGuardada, detalles);
+                // Obtenemos todos los detalles (anteriores + nuevos) para retornar la prescripcion consolidada
+                List<DetallePrescripcion> todosLosDetalles = detalleRepository
+                                .findByPrescripcion_IdPrescripcion(prescripcion.getIdPrescripcion());
+
+                return mapearPrescripcion(prescripcion, todosLosDetalles);
         }
 
         /**
