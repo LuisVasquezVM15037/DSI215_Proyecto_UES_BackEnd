@@ -1,496 +1,151 @@
-# GUÍA DE INTEGRACIÓN Y COMMITS: BACKEND DENTALCARE API
-> **Rol:** Arquitectura de Software & Estándares Académicos  
-> **Stack:** Java 17, Spring Boot 3, Spring Security 6, Hibernate / Spring Data JPA  
-> **Ruta Base:** `src/main/java/com/dentalcare/api/`
+# GUÍA DE ARQUITECTURA E INTEGRACIÓN BACKEND: DENTALCARE API
+> **Estándar:** Java 17, Spring Boot 3, Spring Security 6, Hibernate 6 / Spring Data JPA  
+> **Directriz de Formato:** Especificación Arquitectónica Pura (sin volcados extensos de código fuente). Diseñado para que cualquier desarrollador o modelo de IA comprenda la arquitectura de dominio, reglas transaccionales, seguridad y contratos sin requerir inspección exhaustiva de archivos.
 
 ---
 
-## 🏛️ 1. DICTAMEN ARQUITECTÓNICO Y DESCARTE DE CAMBIOS
+## 🏛️ 1. DICTAMEN Y PRINCIPIOS ARQUITECTÓNICOS
 
-### ✅ Cambios Aprobados
-1. **Seguridad Stateless JWT (`JwtUtil`, `JwtAuthenticationFilter`, `JwtAuthEntryPoint`, `SecurityConfig`):**  
-   - Desacopla la sesión del servidor cumpliendo el principio REST Stateless.
-   - Implementa control de acceso basado en roles (RBAC) con protección defensiva de endpoints sensibles.
-2. **Variables de Entorno (`application.properties`):**  
-   - Conforme a *The Twelve-Factor App* (Factor III: Configuración), evita secretos hardcodeados en el código fuente.
-3. **Compatibilidad Retroactiva de Enum (`EstadoCita.java`):**  
-   - Protege la deserialización JPA ante registros históricos `COMPLETADA` sin quebrar la base de datos existente.
-4. **Validación Declarativa en Cancelación de Citas (`CitaCancelacionDTO`, `CitaService`):**  
-   - Bean Validation en frontera `@NotBlank` y validación defensiva en capa de servicio con sanitización `.trim()`.
-5. **Corrección de Relación Foránea en Prescripciones (`ConsultaService.java`):**  
-   - Soluciona la pérdida de integridad relacional al asociar correctamente `PlanTratamiento` en cada `DetallePrescripcion`.
-6. **Protección de Integridad Referencial (`CitaRepository`, `PacienteService`):**  
-   - Consulta derivada `existsByPaciente_IdPaciente` preventiva antes de intentar borrado físico, evitando excepciones no controladas de base de datos.
+### 1.1 Decisiones Arquitectónicas Aprobadas
+1. **Seguridad Stateless JWT Desacoplada:**
+   - La API opera sin sesiones de servidor (`SessionCreationPolicy.STATELESS`), cumpliendo la especificación REST.
+   - Autenticación delegada a tokens JWT firmados con clave simétrica HMAC-SHA256 (`${jwt.secret}`).
+   - La autorización se basa en roles canónicos extraídos del reclamo (*claim*) `rol` del token e inyectados en `SecurityContextHolder`.
+2. **Centralización Transversal de Excepciones (`@RestControllerAdvice`):**
+   - Prohibido rodear métodos de controladores con bloques `try-catch` dispersos.
+   - Todo error de validación (`MethodArgumentNotValidException`), violación de estado de negocio (`IllegalStateException`, `IllegalArgumentException`) o recurso no encontrado (`EntityNotFoundException`) se traduce a una respuesta estructurada con código HTTP semántico en la capa transversal.
+3. **Integridad Relacional Preventiva:**
+   - Antes de ejecutar operaciones destructivas (`DELETE`), el servicio debe comprobar la existencia de dependencias foráneas mediante consultas derivadas de repositorio (`existsBy...`) para evitar errores `500 Internal Server Error` causados por violaciones de clave foránea en MySQL.
+4. **Configuración Externa (The Twelve-Factor App):**
+   - Secretos criptográficos, tiempos de expiración y credenciales de base de datos se leen desde variables de entorno con fallbacks locales seguros en `application.properties`.
 
-### ❌ Cambios Descartados / Refactorizados
-- **Descarte de `try-catch` dispersos en Controladores (`ConsultaController` y `PacienteController`):**  
-  - **Motivo del Descarte:** Rodear cada método de controlador con `try { ... } catch (RuntimeException ex)` viola el principio de Responsabilidad Única (SRP), genera duplicación masiva de código boilerplate (`Map.of("message", ex.getMessage())`) y enmascara errores graves del sistema (ej. `NullPointerException` o caídas de BD) como errores del cliente `400 Bad Request`.
-  - **Refactorización Académica Obligatoria:** En su lugar, se implementa un **`GlobalExceptionHandler`** centralizado con `@RestControllerAdvice`. Los controladores permanecen limpios y expresivos, delegando el manejo uniforme de excepciones a la capa transversal.
+### 1.2 Antipatrones Descartados y Prohibidos
+* **Prohibido:** Manejar estados de sesión HTTP en memoria del contenedor servlet.
+* **Prohibido:** Inserción de valores de texto no sanitizados en motivos de cancelación o diagnósticos (requieren validación `@NotBlank` y `.trim()`).
+* **Prohibido:** Persistir renglones de detalle farmacéutico (`DetallePrescripcion`) o de plan dental (`PlanTratamiento`) sin sus respectivas entidades maestras asociadas.
 
 ---
 
-## 📦 2. ESTRATEGIA DE COMMITS ATÓMICOS (JIRA)
+## 📦 2. HOJA DE RUTA DE COMMITS ATÓMICOS (JIRA)
+
+| Commit | Tipo / Mensaje Semántico | Responsabilidad Arquitectónica | Componentes Afectados |
+| :---: | :--- | :--- | :--- |
+| **B1** | `feat(security)` | Infraestructura criptográfica JWT, filtro de intercepción y entry point 401 | `JwtUtil`, `JwtAuthenticationFilter`, `JwtAuthEntryPoint`, `application.properties` |
+| **B2** | `feat(security)` | Cadena de filtros de seguridad, desactivación de CSRF y matriz de autorización | `SecurityConfig`, `PasswordEncoder` |
+| **B3** | `fix(database)` | Compatibilidad de enumeraciones de cita y anulabilidad de diente en tratamientos generales | `EstadoCita`, `PlanTratamiento`, `DatabaseSchemaMigrationRunner` |
+| **B4** | `fix(domain)` | Resolución de clave foránea de tratamiento y reutilización de prescripciones | `ConsultaService`, `ConsultaController` |
+| **B5** | `feat(validation)` | Validación declarativa Bean Validation y verificación de integridad en borrado de pacientes | `CitaCancelacionDTO`, `CitaController`, `PacienteService`, `CitaRepository` |
 
 ---
 
-### 🔹 Commit B1: Infraestructura Criptográfica y Filtro JWT
-* **Mensaje de Commit:**
-  ```text
-  [HDU-XXX] feat(security): implementar infraestructura criptografica JWT y filtro OncePerRequest
-  ```
-* **Propósito:** Configurar la generación/validación de firmas HMAC-SHA256 y la intercepción de peticiones HTTP con autorización Bearer.
-* **Archivos Involucrados:**
-  - `src/main/resources/application.properties` (MODIFICAR)
-  - `src/main/java/com/dentalcare/api/security/JwtUtil.java` (CREAR)
-  - `src/main/java/com/dentalcare/api/security/JwtAuthenticationFilter.java` (CREAR)
-  - `src/main/java/com/dentalcare/api/security/JwtAuthEntryPoint.java` (CREAR)
+## 🗂️ 3. TOPOLOGÍA DE CAPAS Y FLUJO DE EJECUCIÓN
 
-#### Paso 1.1: `application.properties`
-Agregar variables de configuración con fallback seguro:
-```properties
-# --- SEGURIDAD JWT ---
-jwt.secret=${JWT_SECRET:dentalcare-clave-secreta-muy-larga-y-segura-2024}
-jwt.expiration.ms=${JWT_EXPIRATION_MS:3600000}
-```
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente as Frontend / Cliente HTTP
+    participant Filter as JwtAuthenticationFilter
+    participant Controller as Controladores REST (@RestController)
+    participant Service as Capa de Servicios (@Service + @Transactional)
+    participant Repo as Repositorios Spring Data JPA
+    participant DB as MySQL 8.0 (BD_DentalCareWeb)
 
-#### Paso 1.2: `security/JwtUtil.java`
-```java
-package com.dentalcare.api.security;
+    Cliente->>Filter: Solicitud HTTP con Header 'Authorization: Bearer <token>'
+    alt Token ausente en ruta pública
+        Filter->>Controller: Permite paso (ej. /api/auth/login)
+    else Token inválido o expirado
+        Filter-->>Cliente: 401 Unauthorized (JwtAuthEntryPoint JSON)
+    else Token válido
+        Filter->>Filter: Extrae usuario y rol, establece Authentication en SecurityContext
+        Filter->>Controller: Despacha petición al método mapeado
+    end
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-import javax.crypto.SecretKey;
-import java.util.Date;
-
-@Component
-public class JwtUtil {
-
-    @Value("${jwt.secret}")
-    private String secret;
-
-    @Value("${jwt.expiration.ms}")
-    private long expirationMs;
-
-    private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes());
-    }
-
-    public String generateToken(String username, String rol) {
-        return Jwts.builder()
-                .subject(username)
-                .claim("rol", rol)
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationMs))
-                .signWith(getSigningKey())
-                .compact();
-    }
-
-    public String extractUsername(String token) {
-        return parseClaims(token).getSubject();
-    }
-
-    public String extractRole(String token) {
-        try {
-            return parseClaims(token).get("rol", String.class);
-        } catch (JwtException | IllegalArgumentException e) {
-            return null;
-        }
-    }
-
-    public boolean validateToken(String token) {
-        try {
-            parseClaims(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
-        }
-    }
-
-    private Claims parseClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-    }
-}
-```
-
-#### Paso 1.3: `security/JwtAuthenticationFilter.java`
-```java
-package com.dentalcare.api.security;
-
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
-@Component
-public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
-    private final JwtUtil jwtUtil;
-
-    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
-        this.jwtUtil = jwtUtil;
-    }
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
-
-        final String authHeader = request.getHeader("Authorization");
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        final String token = authHeader.substring(7);
-
-        try {
-            if (jwtUtil.validateToken(token)) {
-                String username = jwtUtil.extractUsername(token);
-
-                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    String rol = jwtUtil.extractRole(token);
-
-                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                    if (rol != null && !rol.trim().isEmpty()) {
-                        String cleanRol = rol.trim().toUpperCase();
-                        authorities.add(new SimpleGrantedAuthority("ROLE_" + cleanRol));
-                        authorities.add(new SimpleGrantedAuthority(cleanRol));
-                    }
-
-                    UsernamePasswordAuthenticationToken authenticationToken =
-                            new UsernamePasswordAuthenticationToken(username, null, authorities);
-
-                    authenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
-                }
-            }
-        } catch (Exception ex) {
-            SecurityContextHolder.clearContext();
-        }
-
-        filterChain.doFilter(request, response);
-    }
-}
-```
-
-#### Paso 1.4: `security/JwtAuthEntryPoint.java`
-```java
-package com.dentalcare.api.security;
-
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.web.AuthenticationEntryPoint;
-import org.springframework.stereotype.Component;
-
-import java.io.IOException;
-
-@Component
-public class JwtAuthEntryPoint implements AuthenticationEntryPoint {
-
-    @Override
-    public void commence(HttpServletRequest request,
-                         HttpServletResponse response,
-                         AuthenticationException authException) throws IOException, ServletException {
-        response.setContentType("application/json;charset=UTF-8");
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.getWriter().write("{\"message\": \"No autorizado. Se requiere un token válido para acceder a este recurso.\"}");
-    }
-}
+    Controller->>Controller: Valida DTO (@Valid / Bean Validation)
+    Controller->>Service: Invoca método de negocio tipado
+    Service->>Service: Aplica reglas de negocio y restricciones
+    Service->>Repo: Operaciones CRUD / Queries derivadas
+    Repo->>DB: Sentencia SQL (INSERT, SELECT, UPDATE, DELETE)
+    DB-->>Repo: Dataset / Filas afectadas
+    Repo-->>Service: Entidades administradas JPA
+    Service-->>Controller: DTO de respuesta (aplanado / seguro)
+    Controller-->>Cliente: ResponseEntity<DTO> (200 OK / 201 Created)
 ```
 
 ---
 
-### 🔹 Commit B2: Configuración de Seguridad Stateless y RBAC
-* **Mensaje de Commit:**
-  ```text
-  [HDU-XXX] feat(security): configurar politica de seguridad stateless y control de acceso RBAC
-  ```
-* **Propósito:** Reemplazar configuración permisiva por cadena de filtros estricta, sesiones stateless y roles.
-* **Archivos Involucrados:**
-  - `src/main/java/com/dentalcare/api/config/SecurityConfig.java` (MODIFICAR)
+## 🔒 4. MODELO DE SEGURIDAD Y CONTROL DE ACCESO (RBAC)
 
-#### Paso 2.1: `config/SecurityConfig.java`
-```java
-package com.dentalcare.api.config;
+### 4.1 Ciclo de Vida del Token JWT
+* **Algoritmo de Firma:** HMAC-SHA256 con clave secreta mínima de 256 bits.
+* **Tiempo de Expiración:** 3,600,000 ms (1 hora) por defecto, configurable mediante `JWT_EXPIRATION_MS`.
+* **Cuerpo de Reclamos (*Claims*):**
+  - `sub`: Nombre de usuario único del sistema (`usernameUsuario`).
+  - `rol`: Rol canónico en mayúsculas (`ADMIN`, `GERENTE`, `RECEPCIONISTA`, `ODONTOLOGO`).
+  - `iat`: Timestamp de emisión.
+  - `exp`: Timestamp de expiración.
 
-import com.dentalcare.api.security.JwtAuthEntryPoint;
-import com.dentalcare.api.security.JwtAuthenticationFilter;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfigurationSource;
+### 4.2 Matriz de Autorización en `SecurityConfig`
 
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity
-public class SecurityConfig {
-
-    private final JwtAuthenticationFilter jwtAuthFilter;
-    private final JwtAuthEntryPoint jwtAuthEntryPoint;
-    private final CorsConfigurationSource corsConfigurationSource;
-
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter,
-                          JwtAuthEntryPoint jwtAuthEntryPoint,
-                          CorsConfigurationSource corsConfigurationSource) {
-        this.jwtAuthFilter = jwtAuthFilter;
-        this.jwtAuthEntryPoint = jwtAuthEntryPoint;
-        this.corsConfigurationSource = corsConfigurationSource;
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource))
-            .csrf(csrf -> csrf.disable())
-            .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthEntryPoint))
-            .sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/error").permitAll()
-                .requestMatchers("/api/usuarios/**").hasAnyRole("ADMIN", "GERENTE")
-                .requestMatchers("/api/registros-acceso/**").hasRole("ADMIN")
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
-        return http.build();
-    }
-}
-```
+| Patrón de URL | Métodos Permitidos | Nivel de Acceso Requerido | Propósito |
+| :--- | :---: | :--- | :--- |
+| `OPTIONS /**` | `OPTIONS` | Acceso Público | Negociación preflight CORS para navegadores web. |
+| `/api/auth/**` | `POST` | Acceso Público | Login de usuarios y generación de token. |
+| `/error` | Todos | Acceso Público | Despacho de errores internos de Spring. |
+| `/api/usuarios/**` | Todos | `ADMIN`, `GERENTE` | Gestión de cuentas de usuario y credenciales. |
+| `/api/registros-acceso/**`| Todos | `ADMIN` | Consulta de auditoría y registros de acceso. |
+| `/api/consultas/**` | Todos | `ADMIN`, `ODONTOLOGO` | Protocolo clínico, evaluación, odontograma y recetas. |
+| `/api/citas/**` | Todos | Autenticado | Gestión de agenda, programación y cancelaciones. |
+| `/api/pacientes/**` | Todos | Autenticado | Expedientes clínicos y directorios. |
+| **Cualquier otra ruta** | Todos | Autenticado | Denegación por defecto si no hay sesión válida. |
 
 ---
 
-### 🔹 Commit B3: Corrección en Dominio y Persistencia Relacional Clínica
-* **Mensaje de Commit:**
-  ```text
-  [HDU-XXX] fix(clinical): retrocompatibilidad de EstadoCita y persistencia de planes en prescripciones
-  ```
-* **Propósito:** Mantener compatibilidad con BD histórica y asegurar persistencia del plan de tratamiento en prescripciones.
-* **Archivos Involucrados:**
-  - `src/main/java/com/dentalcare/api/models/enums/EstadoCita.java` (MODIFICAR)
-  - `src/main/java/com/dentalcare/api/services/ConsultaService.java` (MODIFICAR)
+## 📐 5. ESPECIFICACIÓN DE ENTIDADES RELACIONALES Y REGLAS DE NEGOCIO
 
-#### Paso 3.1: `models/enums/EstadoCita.java`
-```java
-package com.dentalcare.api.models.enums;
+### 5.1 Entidad: `Cita` (Tabla `cita`)
+* **Identificador:** `idCitas` (Integer, Auto-incremental).
+* **Campos Clínicos:** `fechaCita` (`LocalDate`), `horaInicioCita` (`LocalDateTime`), `horaFinCita` (`LocalDateTime`).
+* **Estado:** `estadoCita` (Enum `EstadoCita`). Valores válidos: `PROGRAMADA`, `PENDIENTE`, `EN_PROGRESO`, `COMPLETADA`, `CANCELADA`, `REPROGRAMADA`, `NO_ASISTIO`.
+* **Regla de Cancelación:** Requiere `motivoCancelacion` no vacío.
+* **Relaciones Foráneas:**
+  - `paciente` (`id_paciente`): Obligatorio. Relación `ManyToOne`.
+  - `odontologo` (`id_odontologo`): Obligatorio. Relación `ManyToOne` hacia la entidad `Usuario`.
 
-public enum EstadoCita {
-    PROGRAMADA, 
-    FINALIZADA, 
-    COMPLETADA,   // Retrocompatibilidad con base de datos historica
-    CANCELADA, 
-    PENDIENTE, 
-    EN_PROGRESO,
-    REPROGRAMADA,
-    NO_ASISTIO,
-    OTRO
-}
-```
+### 5.2 Entidad: `EvaluacionClinica` (Tabla `evaluacion_clinica`)
+* **Identificador:** `idEvaluacionClinica` (Integer, Auto-incremental).
+* **Signos Vitales y Anamnesis:** `motivoConsulta`, `presionArterial`, `temperatura`, `pesoPaciente`, `observaciones`.
+* **Relación:** Asociada de manera unívoca a la `Cita` activa (`ManyToOne` / `OneToOne` lógico).
 
-#### Paso 3.2: `services/ConsultaService.java`
-En `crearPrescripcion()` vincular la referencia foránea de `PlanTratamiento`:
-```java
-// Dentro del mapeo de cada DetallePrescripcion:
-if (dto.getIdPlanTratamiento() != null) {
-    PlanTratamiento plan = planTratamientoRepository.findById(dto.getIdPlanTratamiento())
-            .orElseThrow(() -> new RuntimeException("Plan de tratamiento no encontrado: " + dto.getIdPlanTratamiento()));
-    detalle.setPlanTratamiento(plan);
-}
-```
+### 5.3 Entidad: `PlanTratamiento` (Tabla `plan_tratamiento`)
+* **Identificador:** `idPlanTratamiento` (Integer, Auto-incremental).
+* **Pieza Dental (`piezaDental`):** `Integer`, **anulable (`nullable = true`)**. Tratamientos que no correspondan a un diente específico (ej. Profilaxis General) registran `NULL` o centinela `0`.
+* **Relación con Tratamiento:** `tratamiento` (`id_tratamiento`) es **estrictamente obligatorio (`nullable = false`)**. Debe resolverse la entidad previa a la persistencia.
+* **Estado:** `estadoPlan` (Enum `EstadoPlan`). Transiciones permitidas: `PENDIENTE` -> `PROGRAMADO` -> `EN_PROGRESO` -> `COMPLETADO` / `CANCELADO`.
+
+### 5.4 Entidad: `Prescripcion` y `DetallePrescripcion`
+* **Regla de Anexado:** Una consulta clínica posee una cabecera de prescripción por cita. Al emitir medicamentos adicionales en la misma sesión, el servicio no crea otra cabecera; reutiliza la existente y persiste los renglones adicionales en `DetallePrescripcion`.
+* **Vínculo Opcional:** Cada renglón de detalle puede asociarse opcionalmente a un `PlanTratamiento` específico para relacionar el antibiótico o analgésico al procedimiento realizado.
 
 ---
 
-### 🔹 Commit B4: Protección de Integridad Referencial en Pacientes
-* **Mensaje de Commit:**
-  ```text
-  [HDU-XXX] fix(integrity): prevenir eliminacion de pacientes con citas registradas
-  ```
-* **Propósito:** Validar mediante consulta de existencia relacional antes del borrado de paciente, protegiendo contra Foreign Key constraint violations.
-* **Archivos Involucrados:**
-  - `src/main/java/com/dentalcare/api/repositories/CitaRepository.java` (MODIFICAR)
-  - `src/main/java/com/dentalcare/api/services/PacienteService.java` (MODIFICAR)
+## 🛠️ 6. PROTOCOLO DE EXTENSIÓN PARA MODELOS DE IA
 
-#### Paso 4.1: `repositories/CitaRepository.java`
-Agregar método derivado Spring Data:
-```java
-boolean existsByPaciente_IdPaciente(Integer idPaciente);
+Para modificar o agregar funcionalidades en el backend, siga este orden de intervención:
+
+```mermaid
+flowchart LR
+    E1["1. Entidad JPA & DTO Request/Response"] --> E2["2. Declarar Métodos en Repository"]
+    E2 --> E3["3. Implementar Lógica en @Service (@Transactional)"]
+    E3 --> E4["4. Exponer Endpoint en @RestController (@Valid)"]
 ```
 
-#### Paso 4.2: `services/PacienteService.java`
-```java
-@Service
-public class PacienteService {
-
-    private final PacienteRepository pacienteRepository;
-    private final CitaRepository citaRepository;
-
-    public PacienteService(PacienteRepository pacienteRepository, CitaRepository citaRepository) {
-        this.pacienteRepository = pacienteRepository;
-        this.citaRepository = citaRepository;
-    }
-
-    public void eliminarPaciente(Integer id) {
-        if (!pacienteRepository.existsById(id)) {
-            throw new RuntimeException("Paciente con id " + id + " no encontrado.");
-        }
-        if (citaRepository.existsByPaciente_IdPaciente(id)) {
-            throw new IllegalStateException("No se puede eliminar el paciente porque tiene citas registradas en su historial.");
-        }
-        pacienteRepository.deleteById(id);
-    }
-}
-```
-
----
-
-### 🔹 Commit B5: Validación de Cancelación y Centralización de Excepciones Globales
-* **Mensaje de Commit:**
-  ```text
-  [HDU-XXX] refactor(api): validacion declarativa de cancelacion y manejo transversal de excepciones
-  ```
-* **Propósito:** Aplicar Bean Validation en cancelación y centralizar el mapeo de excepciones (`IllegalStateException`, `IllegalArgumentException`, `RuntimeException`) con `@RestControllerAdvice` eliminando `try-catch` duplicados en controladores.
-* **Archivos Involucrados:**
-  - `src/main/java/com/dentalcare/api/dtos/Cita/CitaCancelacionDTO.java` (MODIFICAR)
-  - `src/main/java/com/dentalcare/api/services/CitaService.java` (MODIFICAR)
-  - `src/main/java/com/dentalcare/api/controllers/CitaController.java` (MODIFICAR)
-  - `src/main/java/com/dentalcare/api/config/GlobalExceptionHandler.java` (CREAR)
-  - `src/main/java/com/dentalcare/api/controllers/PacienteController.java` (LIMPIAR)
-  - `src/main/java/com/dentalcare/api/controllers/ConsultaController.java` (LIMPIAR)
-
-#### Paso 5.1: `dtos/Cita/CitaCancelacionDTO.java`
-```java
-package com.dentalcare.api.dtos.Cita;
-
-import jakarta.validation.constraints.NotBlank;
-import lombok.Data;
-
-@Data
-public class CitaCancelacionDTO {
-
-    @NotBlank(message = "El motivo de cancelación es obligatorio.")
-    private String motivoCancelacion;
-}
-```
-
-#### Paso 5.2: `services/CitaService.java`
-Validación defensiva con `.trim()`:
-```java
-public CitaResponseDTO cancelarCita(Integer id, CitaCancelacionDTO cancelacionRequest) {
-    if (cancelacionRequest == null || cancelacionRequest.getMotivoCancelacion() == null || cancelacionRequest.getMotivoCancelacion().trim().isEmpty()) {
-        throw new IllegalArgumentException("El motivo de cancelación es obligatorio.");
-    }
-
-    Cita cita = citaRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
-
-    cita.setEstadoCita(com.dentalcare.api.models.enums.EstadoCita.CANCELADA);
-    cita.setMotivoCancelacion(cancelacionRequest.getMotivoCancelacion().trim());
-
-    Cita citaActualizada = citaRepository.save(cita);
-    return convertirAResponseDTO(citaActualizada);
-}
-```
-
-#### Paso 5.3: `controllers/CitaController.java`
-```java
-@PutMapping("/{id}/cancelar")
-public ResponseEntity<CitaResponseDTO> cancelarCita(
-        @PathVariable Integer id,
-        @Valid @RequestBody CitaCancelacionDTO cancelacionRequest) {
-    CitaResponseDTO citaCancelada = citaService.cancelarCita(id, cancelacionRequest);
-    return ResponseEntity.ok(citaCancelada);
-}
-```
-
-#### Paso 5.4: Crear `config/GlobalExceptionHandler.java` (Solución Arquitectónica Limpia)
-```java
-package com.dentalcare.api.config;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-
-import java.util.Map;
-
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalState(IllegalStateException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ex.getMessage()));
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ex.getMessage()));
-    }
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
-        String errorMsg = ex.getBindingResult().getFieldErrors().stream()
-                .map(err -> err.getDefaultMessage())
-                .findFirst()
-                .orElse("Datos de entrada inválidos.");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", errorMsg));
-    }
-
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, String>> handleRuntime(RuntimeException ex) {
-        // Manejo controlado de recursos no encontrados o errores de regla de negocio
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ex.getMessage()));
-    }
-}
-```
-*(Gracias a este `GlobalExceptionHandler`, los métodos en `ConsultaController` y `PacienteController` no requieren bloques `try-catch` internos repetitivos).*
-
----
-
-## 🧪 3. VERIFICACIÓN Y COMPILACIÓN
-
-Para verificar que todos los cambios compilan de manera correcta:
-
-```powershell
-.\mvnw.cmd clean compile
-```
-
-**Criterio de Aceptación:** `BUILD SUCCESS`.
+1. **Creación de Nuevo Endpoint:**
+   - Crear DTOs de entrada y salida con anotaciones Jakarta Validation (`@NotNull`, `@NotBlank`, `@Positive`).
+   - Crear el método transaccional en el `@Service` correspondiente. Si el recurso no existe, lanzar excepción semántica descriptiva.
+   - Declarar el método en el `@RestController` retornando `ResponseEntity<DTO>`.
+   - Si la ruta requiere un rol específico, asegurar que coincida con la configuración de `SecurityConfig` o usar `@PreAuthorize("hasRole('ADMIN')")`.
+2. **Modificación de Esquema de Base de Datos:**
+   - Modificar las anotaciones `@Column` en la entidad Java.
+   - Generar la sentencia DDL correspondiente (`ALTER TABLE ...`).
+   - Probar que no existan valores nulos conflictivos en columnas existentes.
+   - Verificar la compilación del proyecto con `mvnw clean compile`.
