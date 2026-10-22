@@ -11,7 +11,7 @@
 | Fase | Subsistema / Módulo | Rol Responsable | PBIs Cubiertos | Story Points | Estado Técnico |
 | :---: | :--- | :--- | :--- | :---: | :---: |
 | **Fase 1** | **Gestión de Suministros, Inventario y Consumo** | **Asistente Dental** / Admin | `DENTALCARE-26`, `DENTALCARE-48`, `DENTALCARE-46`, `DENTALCARE-47` | **11.0 SP** | **COMPLETADA (100%)** |
-| **Fase 2** | Agenda Inteligente y Detección de Conflictos | Recepcionista / Secretaria | `DENTALCARE-62`, `DENTALCARE-60` | 4.0 SP | *Pendiente* |
+| **Fase 2** | **Agenda Inteligente y Control de Conflictos** | **Recepcionista** / Secretaria | `DENTALCARE-62`, `DENTALCARE-60` | **4.0 SP** | **COMPLETADA (100%)** |
 | **Fase 3** | Seguridad Avanzada y Contingencia de Datos | Administrador TI | `DENTALCARE-93`, `DENTALCARE-53`, `DENTALCARE-64` | 11.0 SP | *Pendiente* |
 | **Transversal** | Directrices de Calidad Transversal (Lab II) | Equipo General | `DENTALCARE-97` | — | *En curso / Aplicada* |
 
@@ -73,71 +73,105 @@
   - `src/main/java/com/dentalcare/api/models/MedicamentoItem.java` (Mapeo a tabla `medicamentos`).
   - `src/main/java/com/dentalcare/api/models/Consumo.java` (Mapeo a tabla `consumos`, con FK a `usuario` y `cita`).
 * **Nuevos DTOs con Jakarta Bean Validation (`dtos/Inventario/`):**
-  - `MaterialRequestDTO.java` (Anotaciones: `@NotBlank`, `@Pattern(MT\d+)`, `@Size(5-100)`, `@Min(0)`).
-  - `MaterialResponseDTO.java` (Respuesta con estado de alerta calculado).
-  - `MedicamentoItemRequestDTO.java` (Anotaciones: `@Pattern(MD\d+)`, `@Size(5-100)`, `@Min(1)`).
-  - `MedicamentoItemResponseDTO.java` (Respuesta de medicamentos con lote y fecha de vencimiento).
-  - `ItemInventarioResumenDTO.java` (DTO unificado para búsqueda y filtrado general).
-  - `AjusteStockDTO.java` (Payload para ajuste rápido de stock físico y mínimo).
-  - `ConsumoRequestDTO.java` (Solicitud de registro o corrección de consumo).
-  - `ConsumoResponseDTO.java` (Respuesta con datos de paciente, cita y stock disponible).
+  - `MaterialRequestDTO.java`, `MaterialResponseDTO.java`, `MedicamentoItemRequestDTO.java`, `MedicamentoItemResponseDTO.java`, `ItemInventarioResumenDTO.java`, `AjusteStockDTO.java`, `ConsumoRequestDTO.java`, `ConsumoResponseDTO.java`.
 * **Nuevos Repositorios Spring Data JPA (`repositories/`):**
-  - `MaterialRepository.java` (`findByCodigo`, `existsByCodigo`, consultas de búsqueda ignorando mayúsculas).
-  - `MedicamentoItemRepository.java` (`findByCodigo`, `existsByCodigo`, listado alfabético).
-  - `ConsumoRepository.java` (`findByMesConsumoOrderByFechaConsumoDesc`, listado cronológico).
+  - `MaterialRepository.java`, `MedicamentoItemRepository.java`, `ConsumoRepository.java`.
 * **Capa de Negocio y Controladores:**
-  - `src/main/java/com/dentalcare/api/services/InventarioService.java` (Lógica de validación de nomenclaturas, listado unificado, transacciones atómicas de confirmación y descuento de stock).
-  - `src/main/java/com/dentalcare/api/controllers/InventarioController.java` (Controlador REST bajo `/api/inventario/**`).
+  - `src/main/java/com/dentalcare/api/services/InventarioService.java`.
+  - `src/main/java/com/dentalcare/api/controllers/InventarioController.java` (`/api/inventario/**`).
 * **Migración y Sembrado Inicial Defensivo:**
-  - `src/main/java/com/dentalcare/api/config/DatabaseSchemaMigrationRunner.java` (Sembrado automático de materiales, fármacos e insumos demo para Sprint 4 si las tablas se encuentran vacías).
+  - `src/main/java/com/dentalcare/api/config/DatabaseSchemaMigrationRunner.java`.
 
 #### B. Frontend (React 18 + Vite + Tailwind CSS)
-* **Capa de Servicios y Hooks HTTP:**
-  - `src/services/inventario.service.js` (Llamadas REST a `/inventario/materiales`, `/inventario/medicamentos`, `/inventario/items`, `/inventario/consumos`).
-  - `src/hooks/useInventario.js` (Orquestador de estado, búsquedas debounceadas, carga reactiva y mutaciones con alertas).
-* **Componentes de Dominio (`src/components/inventario/`):**
-  - `MaterialForm.jsx` (Formulario con validación en vivo, borde rojo para errores, toast verde y tarjeta de redirección).
-  - `MedicamentoIngresoForm.jsx` (Formulario de ingreso de medicamentos con validación de cantidad > 0 y prefijo MD).
-  - `InventarioTable.jsx` (Tabla unificada, filtro por tipo, indicadores de stock crítico y modal de ajuste).
-  - `ConsumosMensuales.jsx` (Interfaz de recuadros mensuales, modificación de datos y confirmación con descuento atómico).
-* **Vistas y Enrutamiento:**
-  - `src/views/InventarioPage.jsx` (Página principal con métricas rápidas y sistema de 4 pestañas interactivas).
-  - `src/App.jsx` (Registro de la ruta `/inventario` protegida por RBAC para roles `ADMIN`, `ASISTENTEODONTOLOGO`, `GERENTE`).
-  - `src/components/Layout.jsx` (Inclusión del enlace "Inventario" en `NAV_ITEMS` del sidebar).
+* **Servicios y Hooks:** `src/services/inventario.service.js`, `src/hooks/useInventario.js`.
+* **Componentes:** `MaterialForm.jsx`, `MedicamentoIngresoForm.jsx`, `InventarioTable.jsx`, `ConsumosMensuales.jsx`.
+* **Vistas y Navegación:** `src/views/InventarioPage.jsx`, `src/App.jsx` (`/inventario`), `src/components/Layout.jsx`.
 
 ---
 
-### 2.3 Catálogo de Endpoints REST Creados (Fase 1)
+## 📅 3. CONSOLIDADO DETALLADO — FASE 2: AGENDA INTELIGENTE Y DETECCIÓN DE CONFLICTOS
 
-| Método | Endpoint | Roles Permitidos | Parámetros / Payload Clave | Código Respuesta |
+### 3.1 Historias de Usuario Abordadas y Verificación de Criterios de Aceptación (AC)
+
+#### 1. `DENTALCARE-62` — PBI-Secret-09: Identificar Horarios Disponibles (2.0 SP)
+* **Rol:** Recepcionista / Secretaria.
+* **Objetivo:** Mostrar de forma visual y dinámica únicamente los bloques horarios libres en la jornada laboral del odontólogo seleccionado.
+* **Criterios de Aceptación Cumplidos:**
+  - [x] El sistema calcula y muestra **únicamente los horarios libres** correspondientes al odontólogo y fecha elegidos.
+  - [x] Actualización de la disponibilidad en **tiempo real** al cambiar el doctor o la fecha de la cita mediante el endpoint `/api/citas/disponibilidad` (y `/api/agenda/disponibilidad`).
+  - [x] Permite la **selección directa con un solo clic** sobre la franja horaria deseada, inyectando de forma instantánea y automática tanto la `horaInicioCita` como la `horaFinCita` en el formulario.
+  - [x] Las franjas horarias ocupadas se renderizan visualmente deshabilitadas con estilo tachado y tooltip informativo (*"Ocupado: Cita #..."*).
+
+#### 2. `DENTALCARE-60` — PBI-Secret-08: Detectar Conflictos de Duplicación de Citas (2.0 SP)
+* **Rol:** Recepcionista / Secretaria.
+* **Objetivo:** Evitar solapamientos, citas duplicadas o asignaciones incompatibles para un doctor o un paciente en el mismo horario.
+* **Criterios de Aceptación Cumplidos:**
+  - [x] **Detección Preventiva en Frontend:** En cuanto el usuario introduce una hora que colisiona con una cita existente del especialista, el sistema despliega un banner de alerta visible: *"⚠️ Conflicto de Horario Detectado: El odontólogo ya cuenta con una cita en el bloque seleccionado"*.
+  - [x] **Bloqueo de Asignación en Interfaz:** El botón de envío ("Confirmar Cita" o "Guardar Cambios") queda deshabilitado mientras persista un solapamiento con horarios ocupados.
+  - [x] **Validación Defensiva en Backend:** `CitaService` valida formalmente las colisiones de intervalos horVictor (`horaInicio < citaFin && horaFin > citaInicio`) tanto para el odontólogo como para el paciente (excluyendo la cita activa si es actualización/reprogramación). Ante cualquier intento de solapamiento, responde con código semántico **`HTTP 409 Conflict`**.
+  - [x] **Blindaje en Reprogramación:** Se extendió el modal `ReprogramModal.jsx` con el selector de franjas horarias y el validador de conflictos para evitar solapamientos al mover citas de fecha/hora.
+
+---
+
+### 3.2 Inventario de Archivos Creados y Modificados en Fase 2
+
+#### A. Backend (Spring Boot 3 + Java 17 + Hibernate 6)
+* **Nuevos DTOs (`dtos/Cita/`):**
+  - `FranjaHorariaDTO.java` (`horaInicio`, `horaFin`, `horaInicioIso`, `horaFinIso`, `disponible`, `motivo`, `idCita`).
+  - `DisponibilidadHorarioDTO.java` (`idOdontologo`, `nombreOdontologo`, `fecha`, `horariosDisponibles`).
+* **Modificación de Repositorio:**
+  - `src/main/java/com/dentalcare/api/repositories/CitaRepository.java`:
+    - `findCitasActivasPorOdontologoYFecha(...)`
+    - `findConflictosOdontologo(...)`
+    - `findConflictosOdontologoExcluyendo(...)`
+    - `findConflictosPaciente(...)`
+    - `findConflictosPacienteExcluyendo(...)`
+* **Capa de Servicios y Controladores:**
+  - `src/main/java/com/dentalcare/api/services/CitaService.java`:
+    - Implementación del algoritmo de partición y cálculo de disponibilidad horaria `obtenerDisponibilidad(idOdontologo, fecha)` (jornada 08:00 a 17:00).
+    - Implementación de la validación defensiva `validarConflictoHorario(...)` conectada en `crearCita` y `actualizarCita` con respuestas `409 Conflict`.
+  - `src/main/java/com/dentalcare/api/controllers/CitaController.java`:
+    - Endpoint `GET /api/citas/disponibilidad`.
+  - `src/main/java/com/dentalcare/api/controllers/AgendaController.java`:
+    - Endpoint `GET /api/agenda/disponibilidad` (alias directo de la guía).
+
+#### B. Frontend (React 18 + Vite + Tailwind CSS)
+* **Servicios HTTP:**
+  - `src/services/cita.service.js`: adición del método `getDisponibilidad(idOdontologo, fecha)`.
+* **Componentes de Agenda:**
+  - `src/components/AppointmentForm.jsx`:
+    - Integración de consulta reactiva de disponibilidad al cambiar doctor o fecha.
+    - Cuadrícula interactiva de selección directa con un clic.
+    - Banner reactivo de conflicto de horario y bloqueo de confirmación.
+  - `src/components/ReprogramModal.jsx`:
+    - Integración de selección de franjas horarias libres y prevención de colisión al reprogramar citas.
+
+---
+
+### 3.3 Catálogo de Endpoints REST Actualizados (Fase 2)
+
+| Método | Endpoint | Roles Permitidos | Parámetros / Query Clave | Código Respuesta |
 | :---: | :--- | :--- | :--- | :---: |
-| `POST` | `/api/inventario/materiales` | Asistente, Admin | `{ codigo: "MT78", nombre: "...", unidadMedida: "...", stockActual: 25, stockMinimo: 5 }` | `201 Created` |
-| `GET` | `/api/inventario/materiales` | Asistente, Admin | Listado completo de materiales ordenados alfabéticamente. | `200 OK` |
-| `PATCH` | `/api/inventario/materiales/{id}` | Asistente, Admin | `{ stockActual: 30, stockMinimo: 8, motivoAjuste: "Conteo físico" }` | `200 OK` |
-| `POST` | `/api/inventario/medicamentos` | Asistente, Admin | `{ codigo: "MD45", nombre: "...", cantidadIngreso: 50, lote: "LOT-X9", fechaVencimiento: "2027-08-31" }` | `201 Created` |
-| `GET` | `/api/inventario/medicamentos` | Asistente, Admin | Listado completo de medicamentos del inventario. | `200 OK` |
-| `PATCH` | `/api/inventario/medicamentos/{id}` | Asistente, Admin | `{ stockActual: 45, motivoAjuste: "Ajuste quincenal" }` | `200 OK` |
-| `GET` | `/api/inventario/items` | Todos autenticados | Query params: `?search=resina&tipo=TODOS` | `200 OK` |
-| `GET` | `/api/inventario/consumos` | Asistente, Admin | Query param opcional: `?mes=2026-10` | `200 OK` |
-| `POST` | `/api/inventario/consumos` | Asistente, Admin | `{ tipoItem: "MATERIAL", itemId: 1, cantidad: 2, mesConsumo: "2026-10", notas: "..." }` | `201 Created` |
-| `PUT` | `/api/inventario/consumos/{id}` | Asistente, Admin | `{ cantidad: 3, notas: "Se requirió unidad extra por fractura" }` | `200 OK` |
-| `POST` | `/api/inventario/consumos/{id}/confirmar` | Asistente, Admin | Confirmación atómica que descuenta stock en MySQL y pasa a estado `CONFIRMADO`. | `200 OK` |
+| `GET` | `/api/citas/disponibilidad` | Recepcionista, Admin, Odontólogo | `?idOdontologo=4&fecha=2026-10-24` | `200 OK` |
+| `GET` | `/api/agenda/disponibilidad` | Recepcionista, Admin, Odontólogo | `?odontologo_id=4&fecha=2026-10-24` | `200 OK` |
+| `POST` | `/api/citas` | Recepcionista, Admin | `{ idOdontologo, idPaciente, fechaCita, horaInicioCita, horaFinCita }` | `201 Created` / `409 Conflict` |
+| `PUT` | `/api/citas/{id}` | Recepcionista, Admin | Payload con nuevos horarios de la cita | `200 OK` / `409 Conflict` |
 
 ---
 
-### 2.4 Verificación Técnica de Compilación
+### 3.4 Verificación Técnica de Compilación
 
 1. **Backend (Maven / Spring Boot):**
    ```text
-   [INFO] Compiling 92 source files with javac [debug parameters release 17] to target\classes
-   [INFO] BUILD SUCCESS - Total time: 13.050 s
+   [INFO] Compiling 95 source files with javac [debug parameters release 17] to target\classes
+   [INFO] BUILD SUCCESS - Total time: 9.604 s
    ```
 2. **Frontend (Vite / React 18):**
    ```text
    ✓ 84 modules transformed.
-   dist/assets/InventarioPage-DJivqIds.js  52.74 kB │ gzip: 9.61 kB
-   ✓ built in 3.01s
+   dist/assets/AppointmentPage-D9sQM0ir.js  33.69 kB │ gzip: 8.50 kB
+   ✓ built in 13.76s
    ```
 
 ---
-*Fin del registro oficial de la Fase 1 — DentalCare ERP (Sprint 4).*
+*Fin del registro oficial de la Fase 2 — DentalCare ERP (Sprint 4).*
