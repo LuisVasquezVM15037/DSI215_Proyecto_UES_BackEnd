@@ -1,15 +1,24 @@
 package com.dentalcare.api.services;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
-import com.dentalcare.api.dtos.Cita.CitaResponseDTO;
 import com.dentalcare.api.dtos.Cita.CitaCancelacionDTO;
 import com.dentalcare.api.dtos.Cita.CitaRequestDTO;
+import com.dentalcare.api.dtos.Cita.CitaResponseDTO;
+import com.dentalcare.api.dtos.Cita.DisponibilidadHorarioDTO;
+import com.dentalcare.api.dtos.Cita.FranjaHorariaDTO;
 import com.dentalcare.api.models.Cita;
 import com.dentalcare.api.models.Odontologo;
 import com.dentalcare.api.models.Paciente;
@@ -17,16 +26,9 @@ import com.dentalcare.api.repositories.CitaRepository;
 import com.dentalcare.api.repositories.OdontologoRepository;
 import com.dentalcare.api.repositories.PacienteRepository;
 
-//Con la anotación Service, esta clase se marca como un componente de servicio en el contexto de Spring,
-//lo que permite que Spring gestione su ciclo de vida y la inyección de dependencias.
-
-// La clase CitaService es responsable de contener la lógica de negocio relacionada con las citas,
-// como crear, obtener, actualizar y cancelar citas, así como mapear entre las entidades de
-//la base de datos y los DTOs que se utilizan para la comunicación con el frontend.
 @Service
 public class CitaService {
 
-    //Con la anotacion Autowired, Spring Inyecta los repositorios necesarios para acceder a la base de datos
     @Autowired
     private CitaRepository citaRepository;
 
@@ -40,27 +42,29 @@ public class CitaService {
     // Metodos publicos para la logica de negocio de Citas
     // ====================================================
 
-    // este metodo se encarga de obtener todas las citas de la base de datos y
-    // convertirlas a DTOs para enviarlas al frontend
     public List<CitaResponseDTO> obtenerTodas() {
-        // Obtenemos las entidades de la BD y las transformamos a Response DTOs
         List<Cita> citas = citaRepository.findAllByOrderByFechaCitaAscHoraInicioCitaAsc();
-        // Usamos Stream para mapear cada entidad a un DTO de respuesta
         return citas.stream()
                 .map(this::mapearAResponse)
                 .collect(Collectors.toList());
     }
 
-    // este metodo se encarga de crear una nueva cita a partir de los datos que
-    // vienen del frontend, validando que el odontologo y paciente existan,
-    // y luego guardando la cita en la base de datos
     public CitaResponseDTO crearCita(CitaRequestDTO request) {
+        // Validar conflicto de horario (DENTALCARE-60 / PBI-Secret-08)
+        validarConflictoHorario(
+                request.getIdOdontologo(),
+                request.getIdPaciente(),
+                request.getFechaCita(),
+                request.getHoraInicioCita(),
+                request.getHoraFinCita(),
+                null
+        );
+
         // Validar que las entidades relacionadas existan
         Odontologo odontologo = odontologoRepository.findById(request.getIdOdontologo())
-                .orElseThrow(() -> new RuntimeException("Error: Odontólogo no encontrado"));
-        // Validar que el paciente exista
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Error: Odontólogo no encontrado"));
         Paciente paciente = pacienteRepository.findById(request.getIdPaciente())
-                .orElseThrow(() -> new RuntimeException("Error: Paciente no encontrado"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Error: Paciente no encontrado"));
 
         // Convertir el Request a Entidad
         Cita nuevaCita = mapearAEntidad(request, odontologo, paciente);
@@ -73,15 +77,123 @@ public class CitaService {
     }
 
     // ==================================================
-    // Metodos Privaos para mapeo entre Entidades y DTOs
+    // DISPONIBILIDAD Y CONFLICTOS (SPRINT 4 - FASE 2)
     // ==================================================
 
     /**
-     * Convierte los datos que vienen del Frontend (Request) en un objeto
-     * que la Base de Datos pueda entender (Entidad).
+     * Calcula dinámicamente las franjas horarias libres y ocupadas para un odontólogo en una fecha.
+     * PBI-Secret-09 (DENTALCARE-62)
      */
+    public DisponibilidadHorarioDTO obtenerDisponibilidad(Integer idOdontologo, LocalDate fecha) {
+        Odontologo odontologo = odontologoRepository.findById(idOdontologo)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Odontólogo no encontrado"));
+
+        String nombreOdontologo = (odontologo.getUsuario() != null)
+                ? odontologo.getUsuario().getNombreUsuario() + " " + odontologo.getUsuario().getApellidoUsuario()
+                : "Especialista";
+
+        List<Cita> citasDelDia = citaRepository.findCitasActivasPorOdontologoYFecha(idOdontologo, fecha);
+
+        // Bloques regulares de jornada clínica (08:00 AM a 05:00 PM con receso de almuerzo 12:00-13:00)
+        int[][] slots = {
+                {8, 0, 9, 0},
+                {9, 0, 10, 0},
+                {10, 0, 11, 0},
+                {11, 0, 12, 0},
+                {13, 0, 14, 0},
+                {14, 0, 15, 0},
+                {15, 0, 16, 0},
+                {16, 0, 17, 0}
+        };
+
+        List<FranjaHorariaDTO> franjas = new ArrayList<>();
+        DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
+
+        for (int[] slot : slots) {
+            LocalTime inicioTime = LocalTime.of(slot[0], slot[1]);
+            LocalTime finTime = LocalTime.of(slot[2], slot[3]);
+            LocalDateTime inicioSlot = LocalDateTime.of(fecha, inicioTime);
+            LocalDateTime finSlot = LocalDateTime.of(fecha, finTime);
+
+            boolean ocupado = false;
+            String motivo = null;
+            Integer citaId = null;
+
+            for (Cita c : citasDelDia) {
+                // Intersección de intervalos: inicioSlot < citaFin && finSlot > citaInicio
+                if (inicioSlot.isBefore(c.getHoraFinCita()) && finSlot.isAfter(c.getHoraInicioCita())) {
+                    ocupado = true;
+                    citaId = c.getIdCitas();
+                    motivo = "Ocupado (Cita #" + c.getIdCitas() + ")";
+                    break;
+                }
+            }
+
+            franjas.add(new FranjaHorariaDTO(
+                    inicioTime.format(timeFmt),
+                    finTime.format(timeFmt),
+                    inicioSlot.toString(),
+                    finSlot.toString(),
+                    !ocupado,
+                    motivo,
+                    citaId
+            ));
+        }
+
+        return new DisponibilidadHorarioDTO(idOdontologo, nombreOdontologo, fecha, franjas);
+    }
+
+    /**
+     * Valida si existe conflicto de duplicación o solapamiento horario en tiempo real.
+     * PBI-Secret-08 (DENTALCARE-60)
+     */
+    public void validarConflictoHorario(Integer idOdontologo, Integer idPaciente, LocalDate fecha,
+                                        LocalDateTime horaInicio, LocalDateTime horaFin, Integer idCitaExcluir) {
+        if (horaInicio == null || horaFin == null) {
+            return;
+        }
+
+        if (!horaInicio.isBefore(horaFin)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La hora de inicio debe ser anterior a la hora de fin.");
+        }
+
+        // 1. Conflicto de horario con el Odontólogo
+        List<Cita> conflictosOdont = (idCitaExcluir != null)
+                ? citaRepository.findConflictosOdontologoExcluyendo(idOdontologo, fecha, idCitaExcluir, horaInicio, horaFin)
+                : citaRepository.findConflictosOdontologo(idOdontologo, fecha, horaInicio, horaFin);
+
+        if (!conflictosOdont.isEmpty()) {
+            Cita c = conflictosOdont.get(0);
+            String doc = (c.getOdontologo() != null && c.getOdontologo().getUsuario() != null)
+                    ? c.getOdontologo().getUsuario().getNombreUsuario() + " " + c.getOdontologo().getUsuario().getApellidoUsuario()
+                    : "seleccionado";
+            String hIni = c.getHoraInicioCita().toLocalTime().toString();
+            String hFin = c.getHoraFinCita().toLocalTime().toString();
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Conflicto detectado: El Dr. " + doc + " ya cuenta con una cita asignada de " + hIni + " a " + hFin + " en la fecha indicada.");
+        }
+
+        // 2. Conflicto de horario con el mismo Paciente
+        if (idPaciente != null) {
+            List<Cita> conflictosPac = (idCitaExcluir != null)
+                    ? citaRepository.findConflictosPacienteExcluyendo(idPaciente, fecha, idCitaExcluir, horaInicio, horaFin)
+                    : citaRepository.findConflictosPaciente(idPaciente, fecha, horaInicio, horaFin);
+
+            if (!conflictosPac.isEmpty()) {
+                Cita c = conflictosPac.get(0);
+                String hIni = c.getHoraInicioCita().toLocalTime().toString();
+                String hFin = c.getHoraFinCita().toLocalTime().toString();
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Conflicto detectado: El paciente ya tiene otra cita programada de " + hIni + " a " + hFin + " en la fecha indicada.");
+            }
+        }
+    }
+
+    // ==================================================
+    // Metodos Privados para mapeo entre Entidades y DTOs
+    // ==================================================
+
     private Cita mapearAEntidad(CitaRequestDTO request, Odontologo odontologo, Paciente paciente) {
-        // Creamos una nueva instancia de Cita y le asignamos los datos del Request
         Cita cita = new Cita();
         cita.setOdontologo(odontologo);
         cita.setPaciente(paciente);
@@ -89,8 +201,6 @@ public class CitaService {
         cita.setHoraInicioCita(request.getHoraInicioCita());
         cita.setHoraFinCita(request.getHoraFinCita());
 
-        // Si el estado de la cita viene nulo desde el frontend, lo forzamos a
-        // PROGRAMADA por defecto
         if (request.getEstadoCita() != null) {
             cita.setEstadoCita(request.getEstadoCita());
         } else {
@@ -99,16 +209,8 @@ public class CitaService {
         return cita;
     }
 
-    /**
-     * Convierte la Entidad de la Base de Datos en un objeto "plano"
-     * y seguro para enviar al Frontend (Response).
-     */
     private CitaResponseDTO mapearAResponse(Cita cita) {
-        // Creamos una nueva instancia de CitaResponseDTO y le asignamos los datos de la
-        // Entidad
         CitaResponseDTO response = new CitaResponseDTO();
-
-        // Datos propios de la cita
         response.setIdCitas(cita.getIdCitas());
         response.setFechaCita(cita.getFechaCita());
         response.setHoraInicioCita(cita.getHoraInicioCita());
@@ -116,18 +218,13 @@ public class CitaService {
         response.setEstadoCita(cita.getEstadoCita());
         response.setMotivoCancelacion(cita.getMotivoCancelacion());
 
-        // los datos del paciente se aplanan para evitar enviar objetos anidados al
-        // frontend, lo que puede causar problemas de serialización y seguridad
         if (cita.getPaciente() != null) {
             response.setIdPaciente(cita.getPaciente().getIdPaciente());
             response.setNombreCompletoPaciente(
                     cita.getPaciente().getNombrePaciente() + " " + cita.getPaciente().getApellidoPaciente());
-            // Agregamos el número de identidad del paciente al DTO de respuesta para que el
-            // frontend pueda mostrarlo sin necesidad de hacer otra consulta
             response.setNumeroIdentidadPaciente(cita.getPaciente().getNumeroIdentidadPaciente());
         }
 
-        // Aplanando los datos del Odontólogo
         if (cita.getOdontologo() != null) {
             response.setIdOdontologo(cita.getOdontologo().getIdOdontologo());
             response.setEspecialidadOdontologo(cita.getOdontologo().getEspecialidadOdontologo());
@@ -136,45 +233,43 @@ public class CitaService {
         return response;
     }
 
-    // Método para obtener una sola cita por su ID
     public CitaResponseDTO obtenerPorId(Integer id) {
         Cita cita = citaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
-        
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Error: Cita no encontrada con el ID: " + id));
         return mapearAResponse(cita);
     }
 
-    // Metodo para cancelar una cita, que actualiza el estado de la cita a CANCELADA
-    // y guarda el motivo de cancelación en la base de datos.
-
     public CitaResponseDTO cancelarCita(Integer id, CitaCancelacionDTO cancelacionRequest) {
-        // Buscar la cita existente
         Cita cita = citaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Error: Cita no encontrada con el ID: " + id));
 
-        // Aplicar los cambios de estado y motivo
         cita.setEstadoCita(com.dentalcare.api.models.enums.EstadoCita.CANCELADA);
         cita.setMotivoCancelacion(cancelacionRequest.getMotivoCancelacion());
 
-        // Guardar los cambios en la BD (JPA hace un update automáticamente al encontrar
-        // el ID)
         Cita citaActualizada = citaRepository.save(cita);
-
-        // Mapear a Response y retornar
         return mapearAResponse(citaActualizada);
     }
 
-    // Metodo para actualizar una cita, que permite modificar los datos de la cita
     public CitaResponseDTO actualizarCita(Integer id, CitaRequestDTO request) {
         Cita cita = citaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cita no encontrada"));
+
+        // Validar conflicto de horario excluyendo la cita actual (DENTALCARE-60)
+        validarConflictoHorario(
+                request.getIdOdontologo(),
+                request.getIdPaciente(),
+                request.getFechaCita(),
+                request.getHoraInicioCita(),
+                request.getHoraFinCita(),
+                id
+        );
 
         Odontologo odontologo = odontologoRepository.findById(request.getIdOdontologo())
-                .orElseThrow(() -> new RuntimeException("Odontólogo no encontrado"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Odontólogo no encontrado"));
 
         Paciente paciente = pacienteRepository.findById(request.getIdPaciente())
-                .orElseThrow(() -> new RuntimeException("Paciente no encontrado"));
-        // Actualizar los campos de la cita con los datos del request
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Paciente no encontrado"));
+
         cita.setOdontologo(odontologo);
         cita.setPaciente(paciente);
         cita.setFechaCita(request.getFechaCita());
@@ -183,20 +278,15 @@ public class CitaService {
         cita.setEstadoCita(request.getEstadoCita());
 
         Cita actualizada = citaRepository.save(cita);
-        return mapearAResponse(actualizada); // El método de mapeo manual que ya tienes
+        return mapearAResponse(actualizada);
     }
 
-    // Metodo especifico para cambiar SOLO el estado de la cita (ej. a FINALIZADA)
     @Transactional
     public CitaResponseDTO actualizarEstado(Integer id, com.dentalcare.api.models.enums.EstadoCita nuevoEstado) {
-        // Buscar la cita existente
         Cita cita = citaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Error: Cita no encontrada con el ID: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Error: Cita no encontrada con el ID: " + id));
 
-        // Actualizar solo el estado
         cita.setEstadoCita(nuevoEstado);
-
-        // Guardar y retornar el DTO
         Cita citaActualizada = citaRepository.save(cita);
         return mapearAResponse(citaActualizada);
     }
