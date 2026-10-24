@@ -23,6 +23,9 @@ public class Usuario {
     @Column(nullable = false)
     private Boolean esActivo;
 
+    @Column(name = "debe_cambiar_password")
+    private Boolean debeCambiarPassword = false;
+
     @Column(nullable = false)
     private String nombreUsuario;
 

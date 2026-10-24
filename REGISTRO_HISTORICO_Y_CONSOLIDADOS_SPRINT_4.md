@@ -12,8 +12,8 @@
 | :---: | :--- | :--- | :--- | :---: | :---: |
 | **Fase 1** | **Gestión de Suministros, Inventario y Consumo** | **Asistente Dental** / Admin | `DENTALCARE-26`, `DENTALCARE-48`, `DENTALCARE-46`, `DENTALCARE-47` | **11.0 SP** | **COMPLETADA (100%)** |
 | **Fase 2** | **Agenda Inteligente y Control de Conflictos** | **Recepcionista** / Secretaria | `DENTALCARE-62`, `DENTALCARE-60` | **4.0 SP** | **COMPLETADA (100%)** |
-| **Fase 3** | Seguridad Avanzada y Contingencia de Datos | Administrador TI | `DENTALCARE-93`, `DENTALCARE-53`, `DENTALCARE-64` | 11.0 SP | *Pendiente* |
-| **Transversal** | Directrices de Calidad Transversal (Lab II) | Equipo General | `DENTALCARE-97` | — | *En curso / Aplicada* |
+| **Fase 3** | **Seguridad Avanzada, Reseteo y Contingencia BD** | **Administrador TI** | `DENTALCARE-93`, `DENTALCARE-53`, `DENTALCARE-64` | **11.0 SP** | **COMPLETADA (100%)** |
+| **Transversal** | Directrices de Calidad Transversal (Lab II) | Equipo General | `DENTALCARE-97` | — | **COMPLETADA (100%)** |
 
 ---
 
@@ -108,7 +108,7 @@
 * **Criterios de Aceptación Cumplidos:**
   - [x] **Detección Preventiva en Frontend:** En cuanto el usuario introduce una hora que colisiona con una cita existente del especialista, el sistema despliega un banner de alerta visible: *"⚠️ Conflicto de Horario Detectado: El odontólogo ya cuenta con una cita en el bloque seleccionado"*.
   - [x] **Bloqueo de Asignación en Interfaz:** El botón de envío ("Confirmar Cita" o "Guardar Cambios") queda deshabilitado mientras persista un solapamiento con horarios ocupados.
-  - [x] **Validación Defensiva en Backend:** `CitaService` valida formalmente las colisiones de intervalos horVictor (`horaInicio < citaFin && horaFin > citaInicio`) tanto para el odontólogo como para el paciente (excluyendo la cita activa si es actualización/reprogramación). Ante cualquier intento de solapamiento, responde con código semántico **`HTTP 409 Conflict`**.
+  - [x] **Validación Defensiva en Backend:** `CitaService` valida formalmente las colisiones de intervalos horarios (`horaInicio < citaFin && horaFin > citaInicio`) tanto para el odontólogo como para el paciente (excluyendo la cita activa si es actualización/reprogramación). Ante cualquier intento de solapamiento, responde con código semántico **`HTTP 409 Conflict`**.
   - [x] **Blindaje en Reprogramación:** Se extendió el modal `ReprogramModal.jsx` con el selector de franjas horarias y el validador de conflictos para evitar solapamientos al mover citas de fecha/hora.
 
 ---
@@ -133,7 +133,7 @@
   - `src/main/java/com/dentalcare/api/controllers/CitaController.java`:
     - Endpoint `GET /api/citas/disponibilidad`.
   - `src/main/java/com/dentalcare/api/controllers/AgendaController.java`:
-    - Endpoint `GET /api/agenda/disponibilidad` (alias directo de la guía).
+    - Endpoint `GET /api/agenda/disponibilidad`.
 
 #### B. Frontend (React 18 + Vite + Tailwind CSS)
 * **Servicios HTTP:**
@@ -148,30 +148,125 @@
 
 ---
 
-### 3.3 Catálogo de Endpoints REST Actualizados (Fase 2)
+## 🔐 4. CONSOLIDADO DETALLADO — FASE 3: SEGURIDAD AVANZADA, RESETEO DE CLAVE Y CONTINGENCIA DE BD
 
-| Método | Endpoint | Roles Permitidos | Parámetros / Query Clave | Código Respuesta |
-| :---: | :--- | :--- | :--- | :---: |
-| `GET` | `/api/citas/disponibilidad` | Recepcionista, Admin, Odontólogo | `?idOdontologo=4&fecha=2026-10-24` | `200 OK` |
-| `GET` | `/api/agenda/disponibilidad` | Recepcionista, Admin, Odontólogo | `?odontologo_id=4&fecha=2026-10-24` | `200 OK` |
-| `POST` | `/api/citas` | Recepcionista, Admin | `{ idOdontologo, idPaciente, fechaCita, horaInicioCita, horaFinCita }` | `201 Created` / `409 Conflict` |
-| `PUT` | `/api/citas/{id}` | Recepcionista, Admin | Payload con nuevos horarios de la cita | `200 OK` / `409 Conflict` |
+### 4.1 Historias de Usuario Abordadas y Verificación de Criterios de Aceptación (AC)
+
+#### 1. `DENTALCARE-93` — PBI-AdminTI-06: Restablecer Contraseña de Usuario (5.0 SP)
+* **Rol:** Administrador TI.
+* **Objetivo:** Brindar asistencia técnica inmediata a cualquier miembro del personal dental que haya olvidado sus credenciales o requiera reinicio de acceso.
+* **Criterios de Aceptación Cumplidos:**
+  - [x] **Generación de Contraseña Temporal y Token Criptográfico:** El sistema genera una clave temporal aleatoria (ej: `Temp#849201`) y un token seguro de 128 bits con fecha de caducidad estricta de 24 horas (`expira_en`).
+  - [x] **Notificación Institucional:** Se simula y genera el envío formal del correo institucional con las credenciales temporales y el enlace tokenizado de acceso directo `/reset-password?token=XYZ`.
+  - [x] **Forzado Obligatorio de Cambio de Contraseña:** Se persiste la bandera `debe_cambiar_password = true` en la tabla `usuario`. Al iniciar sesión con la clave provisional, el sistema detecta la condición y redirige forzosamente a la pantalla `/cambiar-password-obligatorio`.
+  - [x] **Validación Defensiva de Credenciales:** La interfaz y el backend exigen que la nueva contraseña posea un mínimo de 6 caracteres, confirmación idéntica y que difiera de la clave temporal. Al completarse con éxito, se actualiza el hash BCrypt, se remueve la bandera (`debe_cambiar_password = false`), se inhabilita el token y se permite el acceso al panel.
+  - [x] **Integración en Panel de Usuarios:** Se agregó el botón contextual `Restablecer Clave` en `UserManagementPage.jsx`, abriendo el modal `ModalRestablecerPassword.jsx` con copiado rápido con un clic de la clave y del enlace.
+
+#### 2. `DENTALCARE-53` — PBI-AdminTi-03: Ejecutar Respaldos de Base de Datos (3.0 SP)
+* **Rol:** Administrador TI.
+* **Objetivo:** Facilitar la ejecución manual de volcados completos de la base de datos relacional MySQL (`BD_DentalCareWeb`) sin interrumpir la operación clínica.
+* **Criterios de Aceptación Cumplidos:**
+  - [x] **Ejecución a Petición:** Botón *"Generar Respaldo Manual"* en `/mantenimiento/respaldos` que desencadena la extracción completa del esquema DDL y todos los registros relacionales.
+  - [x] **Motor Portátil de Dump JDBC:** Implementado mediante `SeguridadMantenimientoService` a través de metadata de conexiones JDBC y `Statement` batch, garantizando generación consistente e independiente de utilitarios externos del sistema operativo.
+  - [x] **Nomenclatura Estandarizada:** Los archivos se generan bajo el patrón `backup_dentalcare_YYYYMMDD_HHMMSS.sql` y se guardan en el directorio seguro `backups/`.
+  - [x] **Trazabilidad Histórica:** Cada respaldo queda asentado en la tabla `respaldos` con su nombre, tamaño en bytes, ruta, usuario generador y estado `EXITOSO`.
+  - [x] **Descarga Directa:** Cada registro cuenta con botón de descarga que transmite el archivo `.sql` al navegador del administrador.
+
+#### 3. `DENTALCARE-64` — PBI-AdminTi-05: Restaurar Información desde Respaldo (3.0 SP)
+* **Rol:** Administrador TI.
+* **Objetivo:** Proveer un mecanismo confiable de recuperación ante incidentes o desastres tecnológicos, restituyendo la base de datos a un punto de control previo.
+* **Criterios de Aceptación Cumplidos:**
+  - [x] **Selección de Respaldo:** Permite restaurar desde cualquier copia del listado histórico o mediante la subida de un archivo externo `.sql`.
+  - [x] **Doble Confirmación Crítica:** Modal con advertencia destructiva en rojo:
+    - Exige escribir exactamente la palabra clave en mayúsculas `RESTAURAR`.
+    - Exige ingresar la **contraseña actual del Administrador TI** autenticado.
+    - El botón de restauración permanece bloqueado mientras ambos requisitos no se cumplan.
+  - [x] **Restauración Segura en Backend:** `SeguridadMantenimientoService` valida la contraseña del admin mediante `PasswordEncoder.matches(...)`, deshabilita temporalmente `FOREIGN_KEY_CHECKS = 0;`, ejecuta secuencialmente el volcado DDL/DML, y reactiva la integridad relacional `FOREIGN_KEY_CHECKS = 1;`.
+  - [x] **Feedback y Notificación:** Notificaciones toast y modales informativos que notifican el éxito de la restauración.
 
 ---
 
-### 3.4 Verificación Técnica de Compilación
+### 4.2 Inventario de Archivos Creados y Modificados en Fase 3
 
-1. **Backend (Maven / Spring Boot):**
+#### A. Backend (Spring Boot 3 + Java 17 + Hibernate 6)
+* **Modificación de Entidades Existentes:**
+  - `src/main/java/com/dentalcare/api/models/Usuario.java`:
+    - Adición de `@Column(name = "debe_cambiar_password") private Boolean debeCambiarPassword = false;`.
+* **Nuevas Entidades JPA:**
+  - `src/main/java/com/dentalcare/api/models/PasswordResetToken.java` (Tabla `password_resets`: `usuario`, `token`, `claveTemporal`, `expiraEn`, `utilizado`, `creadoEn`).
+  - `src/main/java/com/dentalcare/api/models/Respaldo.java` (Tabla `respaldos`: `nombreArchivo`, `rutaAlmacenamiento`, `tamanioBytes`, `estado`, `usuario`, `creadoEn`).
+* **Nuevos DTOs (`dtos/Seguridad/` y `dtos/Login/`):**
+  - `RestablecerPasswordResponseDTO.java` (`idUsuario`, `username`, `email`, `claveProvisional`, `token`, `expiraEn`, `enlaceRestablecimiento`, `mensajeNotificacion`).
+  - `CambiarPasswordDTO.java` (`username`, `passwordActual`, `token`, `passwordNueva`, `confirmarPasswordNueva`).
+  - `RespaldoResponseDTO.java` (`id`, `nombreArchivo`, `rutaAlmacenamiento`, `tamanioBytes`, `tamanioFormateado`, `estado`, `creadoPor`, `creadoEn`).
+  - `RestaurarRespaldoRequestDTO.java` (`adminPassword`, `confirmacionTexto`, `adminUsername`).
+  - `src/main/java/com/dentalcare/api/dtos/Login/LoginResponseDto.java`: soporte para `debeCambiarPassword` y `username`.
+* **Nuevos Repositorios Spring Data JPA:**
+  - `src/main/java/com/dentalcare/api/repositories/PasswordResetRepository.java`.
+  - `src/main/java/com/dentalcare/api/repositories/RespaldoRepository.java`.
+* **Capa de Servicios y Controladores:**
+  - `src/main/java/com/dentalcare/api/services/SeguridadMantenimientoService.java`:
+    - Reseteo administrativo, generación de claves provisionales, validación y forzado de cambio de clave.
+    - Generación portátil de volcados SQL, descarga y ejecución controlada de restauración con validación de credenciales admin y desactivación temporal de foreign keys.
+  - `src/main/java/com/dentalcare/api/services/AutentificacionService.java`:
+    - Inclusión de bandera `debeCambiarPassword` en el payload de respuesta de login.
+  - `src/main/java/com/dentalcare/api/controllers/SeguridadMantenimientoController.java`:
+    - Controlador REST centralizado para seguridad, tokens, respaldos y restauraciones.
+* **Ajustes de Base de Datos y Migración:**
+  - `src/main/java/com/dentalcare/api/config/DatabaseSchemaMigrationRunner.java`:
+    - Chequeo defensivo y agregación DDL de la columna `debe_cambiar_password` en `usuario`.
+
+#### B. Frontend (React 18 + Vite + Tailwind CSS)
+* **Servicios de Red:**
+  - `src/services/seguridad.service.js`: métodos `restablecerPassword`, `validarTokenReset`, `cambiarPasswordObligatorio`, `generarRespaldo`, `listarRespaldos`, `descargarRespaldo`, `restaurarRespaldo`, `restaurarDesdeArchivo`.
+  - `src/services/auth.service.js`: almacenamiento y lectura de `debeCambiarPassword` e identificador de usuario.
+* **Componentes y Modales:**
+  - `src/components/seguridad/ModalRestablecerPassword.jsx`: modal de confirmación y presentación de clave provisional con botones de copiado y vista previa del correo.
+* **Vistas de Seguridad y Mantenimiento:**
+  - `src/views/CambiarPasswordObligatorioPage.jsx`: vista protegida de cambio forzado de clave con validaciones cromáticas en tiempo real (`#ef4444`).
+  - `src/views/ResetPasswordTokenPage.jsx`: vista pública tokenizada para restablecer contraseña mediante enlace `/reset-password?token=...`.
+  - `src/views/MantenimientoRespaldosPage.jsx`: panel completo de administración TI para respaldos, métricas de almacenamiento, descarga de archivos `.sql` y modal de doble confirmación crítica con palabra clave `RESTAURAR` y clave de administrador.
+  - `src/views/UserManagementPage.jsx`: integración de botón *"Restablecer Clave"* en la ficha del personal.
+  - `src/views/LoginPage.jsx`: intercepción de inicio de sesión que redirige a `/cambiar-password-obligatorio` si `debeCambiarPassword === true`.
+* **Navegación y Rutas:**
+  - `src/App.jsx`: registro de rutas `/cambiar-password-obligatorio`, `/reset-password` y `/mantenimiento/respaldos`.
+  - `src/components/Layout.jsx`: adición de la opción *"Respaldos y BD"* (`bi-database-gear`) en la barra lateral exclusiva para rol `ADMIN`.
+
+---
+
+### 4.3 Catálogo Consolidado de Endpoints REST — Fase 3
+
+| Método | Endpoint | Roles Permitidos | Payload / Parámetros | Descripción |
+| :---: | :--- | :--- | :--- | :--- |
+| `POST` | `/api/seguridad/restablecer-password/{idUsuario}` | Administrador TI | ID en ruta de usuario | Genera clave provisional, token 24h y setea `debe_cambiar_password = 1`. |
+| `GET` | `/api/seguridad/validar-token/{token}` | Público / Autenticado | Token en ruta | Valida vigencia (24h) y no utilización previa del token criptográfico. |
+| `POST` | `/api/seguridad/cambiar-password-obligatorio` | Público / Autenticado | `{ username, passwordActual, token, passwordNueva, confirmarPasswordNueva }` | Actualiza contraseña en BCrypt y retira la bandera de cambio obligatorio. |
+| `POST` | `/api/mantenimiento/respaldos/generar` | Administrador TI | Ninguno | Genera volcado `.sql` completo de MySQL en el directorio `backups/`. |
+| `GET` | `/api/mantenimiento/respaldos` | Administrador TI | Ninguno | Retorna historial cronológico de respaldos con tamaños formateados. |
+| `GET` | `/api/mantenimiento/respaldos/{id}/descargar` | Administrador TI | ID en ruta | Descarga en streaming el archivo `.sql` como archivo adjunto (`attachment`). |
+| `POST` | `/api/mantenimiento/respaldos/{id}/restaurar` | Administrador TI | `{ adminPassword, confirmacionTexto: "RESTAURAR" }` | Ejecuta la restauración total de la BD a partir del archivo registrado. |
+| `POST` | `/api/mantenimiento/respaldos/restaurar-archivo` | Administrador TI | `multipart/form-data` (file, adminPassword, confirmacionTexto) | Restaura la BD a partir de un archivo `.sql` subido manualmente. |
+
+---
+
+### 4.4 Verificación Técnica de Compilación
+
+1. **Backend (Maven / Spring Boot 3 / Java 17):**
    ```text
-   [INFO] Compiling 95 source files with javac [debug parameters release 17] to target\classes
-   [INFO] BUILD SUCCESS - Total time: 9.604 s
+   [INFO] Compiling 105 source files with javac [debug parameters release 17] to target\classes
+   [INFO] BUILD SUCCESS
+   [INFO] Total time: 15.651 s
    ```
-2. **Frontend (Vite / React 18):**
+2. **Frontend (Vite / React 18 / Tailwind CSS):**
    ```text
-   ✓ 84 modules transformed.
-   dist/assets/AppointmentPage-D9sQM0ir.js  33.69 kB │ gzip: 8.50 kB
-   ✓ built in 13.76s
+   ✓ 89 modules transformed.
+   dist/assets/MantenimientoRespaldosPage-Bfcpw1Dm.js       15.74 kB │ gzip:  3.95 kB
+   dist/assets/UserManagementPage-C-CzOSDV.js               18.52 kB │ gzip:  5.06 kB
+   dist/assets/CambiarPasswordObligatorioPage-DVrwpAbB.js    7.88 kB │ gzip:  2.32 kB
+   dist/assets/ResetPasswordTokenPage-Cm4LfF6f.js            6.31 kB │ gzip:  2.11 kB
+   dist/assets/seguridad.service-79M5AxyD.js                 1.52 kB │ gzip:  0.71 kB
+   ✓ built in 2.89s
    ```
 
 ---
-*Fin del registro oficial de la Fase 2 — DentalCare ERP (Sprint 4).*
+*Fin del registro oficial de la Fase 3 — DentalCare ERP (Sprint 4).*
