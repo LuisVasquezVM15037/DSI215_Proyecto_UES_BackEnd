@@ -32,6 +32,15 @@ public class DatabaseSchemaMigrationRunner implements CommandLineRunner {
         }
 
         try {
+            log.info("Verificando existencia de columna 'debe_cambiar_password' en tabla 'usuario'...");
+            jdbcTemplate.execute("ALTER TABLE usuario ADD COLUMN debe_cambiar_password BOOLEAN DEFAULT FALSE");
+            log.info("Columna 'debe_cambiar_password' añadida exitosamente a tabla 'usuario'.");
+        } catch (Exception e) {
+            // Normal si la columna ya existe
+            log.debug("Aviso de columna 'debe_cambiar_password': {}", e.getMessage());
+        }
+
+        try {
             // Sembrado inicial defensivo para Sprint 4 (Inventario) si las tablas están vacías
             Integer countMateriales = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM materiales", Integer.class);
             if (countMateriales != null && countMateriales == 0) {

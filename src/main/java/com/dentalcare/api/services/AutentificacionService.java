@@ -83,6 +83,8 @@ public class AutentificacionService {
         // Construimos el nombre completo para mostrar en el frontend
         String nombreCompleto = usuario.getNombreUsuario() + " " + usuario.getApellidoUsuario();
 
-        return new LoginResponseDto(token, nombreCompleto, nombreRol);
+        boolean debeCambiar = Boolean.TRUE.equals(usuario.getDebeCambiarPassword());
+
+        return new LoginResponseDto(token, nombreCompleto, nombreRol, debeCambiar, usuario.getUsernameUsuario());
     }
 }
