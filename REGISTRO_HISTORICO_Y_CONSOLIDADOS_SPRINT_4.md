@@ -270,3 +270,99 @@
 
 ---
 *Fin del registro oficial de la Fase 3 ‚Äî DentalCare ERP (Sprint 4).*
+
+---
+
+## ??? 5. CONTROL DE ACCESO BASADO EN ROLES (RBAC) ó ROL ASISTENTE ODONTOL”GICO (ASISTENTEODONTOLOGO)
+
+### 5.1 Contexto y Necesidad de IntegraciÛn
+En la entrega y consolidaciÛn final del Sprint 4 se identificÛ la incorporaciÛn en base de datos del rol clÌnico **`ASISTENTEODONTOLOGO`** (responsable del subsistema de insumos, materiales, medicamentos y consumos). Para garantizar la integridad del sistema y una experiencia de usuario segura, se aplicaron las siguientes reglas de control de acceso (RBAC):
+
+### 5.2 Matriz de AutorizaciÛn por Rutas y Endpoints
+
+| MÛdulo / Ruta | Permiso para `ASISTENTEODONTOLOGO` | Comportamiento del Sistema |
+| :--- | :---: | :--- |
+| **/dashboard** | **Permitido** | Panel adaptado con accesos r·pidos tem·ticos a inventario y suministros clÌnicos. |
+| **/inventario** | **Permitido** | Control total sobre cat·logo de materiales, ingreso de medicamentos, stock y confirmaciÛn mensual de consumos. |
+| **/consulta** | *Restringido* | RedirecciÛn preventiva autom·tica a /dashboard vÌa ProtectedRoute. |
+| **/agenda** | *Restringido* | Protegido para Administrador, Recepcionista y Gerencia. |
+| **/pacientes** | *Restringido* | Protegido para Administrador, Recepcionista y Gerencia. |
+| **/usuarios** | *Restringido* | Protegido exclusivamente para Administrador y Gerencia. |
+| **/revisar-accesos** | *Restringido* | Protegido exclusivamente para Administrador TI. |
+| **/mantenimiento/respaldos** | *Restringido* | Protegido exclusivamente para Administrador TI (auditorÌa y contingencia de BD). |
+
+### 5.3 Implementaciones TÈcnicas Aplicadas
+
+1. **NormalizaciÛn CanÛnica de Roles (oles.constants.js):**
+   - CreaciÛn de la funciÛn 
+ormalizeRole(role) que transforma insensiblemente variaciones (ej: 'ASISTENTEODONTOLOGO', 'asistenteOdontologo', 'asistente dental', 'asistente') a la clave canÛnica unificada 'asistenteodontologo'.
+   - ImplementaciÛn de hasRoleAccess(userRole, allowedRoles) para evaluaciones robustas y libres de errores tipogr·ficos o de may˙sculas/min˙sculas.
+   - CreaciÛn de ormatRoleName(role) para representaciÛn estÈtica y profesional en la interfaz (mostrando *"Asistente OdontolÛgico"* en badges de usuario, listas y selects).
+2. **Blindaje en Guardi·n de Rutas (ProtectedRoute.jsx):**
+   - MigraciÛn de verificaciÛn manual a hasRoleAccess(userRole, allowedRoles) asegurando que ning˙n usuario con rol ASISTENTEODONTOLOGO sea bloqueado errÛneamente en /inventario ni pueda vulnerar rutas administrativas o mÈdicas.
+3. **Filtrado Din·mico del Men˙ Lateral (Layout.jsx):**
+   - El men˙ de navegaciÛn eval˙a reactivamente los permisos con hasRoleAccess. Al autenticarse como ASISTENTEODONTOLOGO, la barra lateral muestra ˙nicamente los accesos a **Inicio** e **Inventario**, ocultando opciones mÈdicas y administrativas.
+   - El avatar y el men˙ desplegable del encabezado muestran el rol formateado *"Asistente OdontolÛgico"*.
+4. **Dashboard Contextual Personalizado (DashboardPage.jsx):**
+   - Si el usuario autenticado posee el rol ASISTENTEODONTOLOGO, el encabezado de bienvenida adapta su botÛn de acciÛn principal a *"GestiÛn de Insumos"* (/inventario).
+   - La cuadrÌcula de **Acciones Frecuentes** se adapta din·micamente para desplegar los 4 flujos prioritarios del Sprint 4:
+     1. *Cat·logo de Materiales (MT)*
+     2. *Ingreso de Medicamentos (MD)*
+     3. *SupervisiÛn de Stock ClÌnico*
+     4. *Confirmar Consumos Mensuales*
+5. **Defensa de Esquema en Base de Datos (DatabaseSchemaMigrationRunner.java):**
+   - VerificaciÛn y aseguramiento del registro ASISTENTEODONTOLOGO dentro de la tabla ol de MySQL para consistencia relacional.
+
+---
+*Fin del registro oficial de consolidaciÛn y RBAC ó DentalCare ERP (Sprint 4).*
+
+
+## 6. NORMALIZACI√ìN ARQUITECT√ìNICA Y UNIFICACI√ìN DE MEDICAMENTOS
+
+### 6.1 Problema Identificado
+Se detect√≥ una discrepancia en el modelo relacional entre el subsistema cl√≠nico (Sprint 2/3 - Consultas y Prescripciones) y el subsistema de inventario (Sprint 4 - Suministros Cl√≠nicos):
+1. Exist√≠a una tabla medicamento (singular) hist√≥rica utilizada por detalle_prescripcion y movimiento_inventario.
+2. En Sprint 4 se cre√≥ la tabla medicamentos (plural) con los nuevos atributos de inventario (codigo MDxx, presentacion, lote, echa_vencimiento, stock_minimo, stock_actual).
+3. El Step 3 de consulta odontol√≥gica (StepPrescripcion.jsx) consum√≠a el endpoint de la tabla singular, impidiendo que el odont√≥logo visualizara los medicamentos reales ingresados por el Asistente Dental en la base de datos.
+
+### 6.2 Soluci√≥n Aplicada (Unificaci√≥n en Tabla Can√≥nica 'medicamentos')
+Se procedi√≥ a unificar y normalizar el modelo de datos en una sola tabla can√≥nica f√≠sica:
+1. **Esquema de Base de Datos (BD_DentalCareWeb):**
+   - La tabla medicamentos fue enriquecida con los atributos cl√≠nicos complementarios: componente_activo, concentracion, costo_medicamento, id_proveedor.
+   - Se actualizaron las llaves for√°neas de detalle_prescripcion y movimiento_inventario para referenciar formalmente a medicamentos(id).
+   - Se elimin√≥ la tabla redundante medicamento.
+   - Se cre√≥ una vista SQL medicamento (CREATE OR REPLACE VIEW medicamento) como capa de compatibilidad hacia atr√°s para salvaguardar cualquier consulta o script de evaluaci√≥n de la c√°tedra.
+2. **Backend (Spring Boot):**
+   - La entidad MedicamentoItem.java se consolid√≥ como modelo √∫nico representativo de la tabla medicamentos.
+   - Se actualizaron DetallePrescripcion.java y MovimientoInventario.java para asociarse a MedicamentoItem.
+   - Se eliminaron las clases redundantes Medicamento.java y MedicamentoRepository.java.
+   - En ConsultaService.java, los m√©todos listarMedicamentos(), crearPrescripcion() y mapearPrescripcion() fueron migrados a MedicamentoItemRepository, mapeando din√°micamente nombres, presentaciones y concentraciones.
+   - En DatabaseSchemaMigrationRunner.java, se agregaron verificaciones autom√°ticas idempotentes de esquema DDL para asegurar que cualquier despliegue mantenga la unificaci√≥n intacta.
+3. **Frontend:**
+   - **Cero modificaciones visuales**: No se alter√≥ ning√∫n archivo ni estilo de la interfaz de usuario, garantizando la preservaci√≥n total de los cambios visuales aplicados por el usuario.
+   - El selector del Step 3 (StepPrescripcion.jsx) recibe de inmediato todos los medicamentos registrados en el cat√°logo de inventario con sus respectivas concentraciones y componentes activos.
+
+---
+
+
+## 7. DESCARGA AUTOM√ÅTICA DE MEDICAMENTOS RECETADOS AL FINALIZAR CONSULTA
+
+### 7.1 Requerimiento y Flujo de Negocio
+Al emitir una prescripci√≥n m√©dica desde el Step 3 de la consulta odontol√≥gica (StepPrescripcion.jsx), cuando el doctor finaliza la consulta (transici√≥n de la cita a estado COMPLETADA):
+1. El sistema debe descargar autom√°ticamente del inventario f√≠sico (stock_actual en tabla medicamentos) los f√°rmacos prescritos al paciente.
+2. Debe registrarse el consumo cl√≠nico correspondiente en la tabla consumos con estado CONFIRMADO para que el Asistente Dental y Administraci√≥n dispongan de trazabilidad en el m√≥dulo de suministros.
+
+### 7.2 Implementaci√≥n T√©cnica Aplicada
+1. **L√≥gica de Negocio en Backend (CitaService.java):**
+   - Se intercept√≥ el cambio de estado en ctualizarEstado(Integer id, EstadoCita nuevoEstado). Cuando el estado cambia a COMPLETADA, se invoca descargarInventarioPorPrescripcion(Cita cita).
+   - La operaci√≥n recupera la prescripci√≥n y los detalles asociados a la cita.
+   - Para cada medicamento prescrito:
+     - Se descuenta 1 unidad de presentaci√≥n del stock_actual en medicamentos (con salvaguarda Math.max(0, stock - 1)).
+     - Se registra un registro en la entidad Consumo con 	ipoItem = TipoItem.MEDICAMENTO, estado = EstadoConsumo.CONFIRMADO, vinculando la cita, el odont√≥logo responsable y notas cl√≠nicas de la posolog√≠a.
+     - **Idempotencia:** Se verifica mediante ConsumoRepository.existsByCita_IdCitasAndTipoItemAndItemId para garantizar que un medicamento no sea descontado dos veces si se consulta o recarga la cita.
+2. **Repositorio de Consumos (ConsumoRepository.java):**
+   - Se a√±adi√≥ el m√©todo derivado existsByCita_IdCitasAndTipoItemAndItemId(Integer idCitas, TipoItem tipoItem, Integer itemId).
+3. **Flujo de Usuario en Frontend (ActiveConsultationPage.jsx):**
+   - Se sincroniz√≥ el evento onFinalizar para que, si el doctor tiene medicamentos a√±adidos al borrador de la receta y pulsa *Finalizar Consulta y Ver Resumen*, primero guarde autom√°ticamente la receta en la base de datos y luego proceda con la finalizaci√≥n y descarga de inventario sin requerir pasos manuales adicionales ni alterar la interfaz visual.
+
+---

@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -149,6 +150,9 @@ public class InventarioService {
         nuevo.setFechaVencimiento(dto.getFechaVencimiento());
         nuevo.setStockActual(dto.getCantidadIngreso());
         nuevo.setStockMinimo(dto.getStockMinimo() != null ? dto.getStockMinimo() : 5);
+        nuevo.setConcentracion(nuevo.getPresentacion());
+        nuevo.setComponenteActivo(nuevo.getNombre());
+        nuevo.setCostoMedicamento(BigDecimal.ZERO);
 
         MedicamentoItem guardado = medicamentoItemRepository.save(nuevo);
         return mapToMedicamentoResponseDTO(guardado);

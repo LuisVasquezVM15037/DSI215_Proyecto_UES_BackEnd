@@ -19,7 +19,7 @@ public class MovimientoInventario {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_medicamento", nullable = false)
-    private Medicamento medicamento;
+    private MedicamentoItem medicamento;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
