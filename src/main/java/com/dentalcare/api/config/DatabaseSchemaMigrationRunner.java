@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Runner de inicialización para aplicar ajustes de esquema DDL que Hibernate
- * ddl-auto=update omite deliberadamente (como alterar la nulabilidad de una columna existente)
- * y sembrado defensivo inicial para Sprint 4.
+ * ddl-auto=update omite deliberadamente (como alterar la nulabilidad de una columna existente),
+ * unificación de tablas de medicamentos y sembrado defensivo inicial para Sprint 4.
  */
 @Component
 public class DatabaseSchemaMigrationRunner implements CommandLineRunner {
@@ -41,6 +41,46 @@ public class DatabaseSchemaMigrationRunner implements CommandLineRunner {
         }
 
         try {
+            log.info("Verificando existencia del rol ASISTENTEODONTOLOGO en tabla 'rol'...");
+            Integer countAsistente = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM rol WHERE nombre_rol = 'ASISTENTEODONTOLOGO'", Integer.class);
+            if (countAsistente != null && countAsistente == 0) {
+                log.info("Sembrando rol ASISTENTEODONTOLOGO en tabla 'rol'...");
+                jdbcTemplate.execute("INSERT INTO rol (nombre_rol) VALUES ('ASISTENTEODONTOLOGO')");
+                log.info("Rol ASISTENTEODONTOLOGO registrado exitosamente.");
+            }
+        } catch (Exception e) {
+            log.debug("Aviso de verificación para rol ASISTENTEODONTOLOGO: {}", e.getMessage());
+        }
+
+        // ── UNIFICACIÓN DE MEDICAMENTOS (Tabla 'medicamentos' única normalizada) ─────────
+        try {
+            log.info("Verificando columnas clínicas unificadas en tabla 'medicamentos'...");
+            try {
+                jdbcTemplate.execute("ALTER TABLE medicamentos ADD COLUMN componente_activo VARCHAR(255) NULL");
+            } catch (Exception ignored) {}
+            try {
+                jdbcTemplate.execute("ALTER TABLE medicamentos ADD COLUMN concentracion VARCHAR(255) NULL");
+            } catch (Exception ignored) {}
+            try {
+                jdbcTemplate.execute("ALTER TABLE medicamentos ADD COLUMN costo_medicamento DECIMAL(10,2) NULL DEFAULT 0.00");
+            } catch (Exception ignored) {}
+            try {
+                jdbcTemplate.execute("ALTER TABLE medicamentos ADD COLUMN id_proveedor INT NULL");
+            } catch (Exception ignored) {}
+
+            // Asegurar que la vista de compatibilidad 'medicamento' exista
+            jdbcTemplate.execute("CREATE OR REPLACE VIEW medicamento AS " +
+                    "SELECT id AS id_medicamento, nombre AS nombre_medicamento, " +
+                    "COALESCE(componente_activo, codigo) AS componente_activo, " +
+                    "COALESCE(concentracion, presentacion) AS concentracion, " +
+                    "costo_medicamento, stock_actual AS cantidad_inventario, id_proveedor FROM medicamentos");
+            log.info("Unificación de medicamentos y vista de compatibilidad verificada exitosamente.");
+        } catch (Exception e) {
+            log.debug("Aviso de migración de medicamentos: {}", e.getMessage());
+        }
+
+        try {
             // Sembrado inicial defensivo para Sprint 4 (Inventario) si las tablas están vacías
             Integer countMateriales = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM materiales", Integer.class);
             if (countMateriales != null && countMateriales == 0) {
@@ -54,10 +94,10 @@ public class DatabaseSchemaMigrationRunner implements CommandLineRunner {
             Integer countMedicamentos = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM medicamentos", Integer.class);
             if (countMedicamentos != null && countMedicamentos == 0) {
                 log.info("Sembrando catálogo inicial de medicamentos para Sprint 4...");
-                jdbcTemplate.execute("INSERT INTO medicamentos (codigo, nombre, presentacion, lote, fecha_vencimiento, stock_actual, stock_minimo) VALUES " +
-                        "('MD45', 'Amoxicilina 500mg cápsulas', 'Caja x 30 cápsulas', 'LOT-2026-X9', '2027-08-31', 50, 10), " +
-                        "('MD12', 'Lidocaína 2% con Epinefrina 1:100000', 'Caja x 50 carpules', 'LOT-2026-L2', '2027-12-31', 60, 15), " +
-                        "('MD08', 'Ibuprofeno 600mg tabletas', 'Caja x 20 tabletas', 'LOT-2026-I4', '2028-02-28', 35, 8)");
+                jdbcTemplate.execute("INSERT INTO medicamentos (codigo, nombre, presentacion, lote, fecha_vencimiento, stock_actual, stock_minimo, componente_activo, concentracion, costo_medicamento, id_proveedor) VALUES " +
+                        "('MD45', 'Amoxicilina 500mg cápsulas', 'Caja x 30 cápsulas', 'LOT-2026-X9', '2027-08-31', 50, 10, 'Amoxicilina', '500 mg', 5.00, 1), " +
+                        "('MD12', 'Lidocaína 2% con Epinefrina 1:100000', 'Caja x 50 carpules', 'LOT-2026-L2', '2027-12-31', 60, 15, 'Lidocaína / Epinefrina', '2% (1:100000)', 1.25, 1), " +
+                        "('MD08', 'Ibuprofeno 600mg tabletas', 'Caja x 20 tabletas', 'LOT-2026-I4', '2028-02-28', 35, 8, 'Ibuprofeno', '600 mg', 0.50, 1)");
             }
 
             Integer countConsumos = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM consumos", Integer.class);
