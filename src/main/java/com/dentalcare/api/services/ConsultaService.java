@@ -15,6 +15,7 @@ import com.dentalcare.api.repositories.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -34,7 +35,7 @@ public class ConsultaService {
         private final TratamientoRepository tratamientoRepository;
         private final PrescripcionRepository prescripcionRepository;
         private final DetallePrescripcionRepository detalleRepository;
-        private final MedicamentoRepository medicamentoRepository;
+        private final MedicamentoItemRepository medicamentoItemRepository;
 
         // Inyeccion por constructor
         public ConsultaService(CitaRepository citaRepository,
@@ -43,14 +44,14 @@ public class ConsultaService {
                         TratamientoRepository tratamientoRepository,
                         PrescripcionRepository prescripcionRepository,
                         DetallePrescripcionRepository detalleRepository,
-                        MedicamentoRepository medicamentoRepository) {
+                        MedicamentoItemRepository medicamentoItemRepository) {
                 this.citaRepository = citaRepository;
                 this.evaluacionRepository = evaluacionRepository;
                 this.planTratamientoRepository = planTratamientoRepository;
                 this.tratamientoRepository = tratamientoRepository;
                 this.prescripcionRepository = prescripcionRepository;
                 this.detalleRepository = detalleRepository;
-                this.medicamentoRepository = medicamentoRepository;
+                this.medicamentoItemRepository = medicamentoItemRepository;
         }
 
         // =========================================================================
@@ -229,7 +230,7 @@ public class ConsultaService {
 
                 // Creamos las lineas de detalle enviadas
                 List<DetallePrescripcion> nuevosDetalles = request.getDetalles().stream().map(dto -> {
-                        Medicamento medicamento = medicamentoRepository.findById(dto.getIdMedicamento())
+                        MedicamentoItem medicamento = medicamentoItemRepository.findById(dto.getIdMedicamento())
                                         .orElseThrow(() -> new RuntimeException(
                                                         "Medicamento no encontrado: " + dto.getIdMedicamento()));
 
@@ -306,14 +307,16 @@ public class ConsultaService {
         }
 
         public List<MedicamentoResponseDTO> listarMedicamentos() {
-                return medicamentoRepository.findAll().stream()
+                return medicamentoItemRepository.findAllByOrderByNombreAsc().stream()
                                 .map(m -> new MedicamentoResponseDTO(
-                                                m.getIdMedicamento(),
-                                                m.getNombreMedicamento(),
-                                                m.getComponenteActivo(),
-                                                m.getConcentracion(),
-                                                m.getCostoMedicamento(),
-                                                m.getCantidadInventario()))
+                                                m.getId(),
+                                                m.getNombre(),
+                                                (m.getComponenteActivo() != null && !m.getComponenteActivo().isBlank())
+                                                                ? m.getComponenteActivo() : m.getCodigo(),
+                                                (m.getConcentracion() != null && !m.getConcentracion().isBlank())
+                                                                ? m.getConcentracion() : m.getPresentacion(),
+                                                m.getCostoMedicamento() != null ? m.getCostoMedicamento() : BigDecimal.ZERO,
+                                                m.getStockActual()))
                                 .collect(Collectors.toList());
         }
 
@@ -337,10 +340,14 @@ public class ConsultaService {
                 List<PrescripcionResponseDTO.DetallePrescripcionResponseDTO> detallesDTO = detalles.stream()
                                 .map(d -> new PrescripcionResponseDTO.DetallePrescripcionResponseDTO(
                                                 d.getIdDetallePrescripcion(),
-                                                d.getMedicamento().getIdMedicamento(),
-                                                d.getMedicamento().getNombreMedicamento(),
-                                                d.getMedicamento().getComponenteActivo(),
-                                                d.getMedicamento().getConcentracion(),
+                                                d.getMedicamento().getId(),
+                                                d.getMedicamento().getNombre(),
+                                                (d.getMedicamento().getComponenteActivo() != null && !d.getMedicamento().getComponenteActivo().isBlank())
+                                                                ? d.getMedicamento().getComponenteActivo()
+                                                                : d.getMedicamento().getCodigo(),
+                                                (d.getMedicamento().getConcentracion() != null && !d.getMedicamento().getConcentracion().isBlank())
+                                                                ? d.getMedicamento().getConcentracion()
+                                                                : d.getMedicamento().getPresentacion(),
                                                 d.getDosisPrescripcion(),
                                                 d.getFrecuenciaPrescripcion(),
                                                 d.getDuracionPrescripcion(),

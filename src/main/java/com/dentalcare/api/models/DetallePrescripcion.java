@@ -17,7 +17,7 @@ public class DetallePrescripcion {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_medicamento", nullable = false)
-    private Medicamento medicamento;
+    private MedicamentoItem medicamento;
 
     @Column(nullable = false)
     private String dosisPrescripcion;

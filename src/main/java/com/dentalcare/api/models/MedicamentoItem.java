@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -38,6 +39,19 @@ public class MedicamentoItem {
 
     @Column(name = "stock_minimo", nullable = false)
     private Integer stockMinimo = 5;
+
+    @Column(name = "componente_activo")
+    private String componenteActivo;
+
+    @Column(name = "concentracion")
+    private String concentracion;
+
+    @Column(name = "costo_medicamento", precision = 10, scale = 2)
+    private BigDecimal costoMedicamento = BigDecimal.ZERO;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_proveedor")
+    private Proveedor proveedor;
 
     @Column(name = "creado_en", updatable = false)
     private LocalDateTime creadoEn;

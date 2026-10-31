@@ -25,6 +25,18 @@ import com.dentalcare.api.models.Paciente;
 import com.dentalcare.api.repositories.CitaRepository;
 import com.dentalcare.api.repositories.OdontologoRepository;
 import com.dentalcare.api.repositories.PacienteRepository;
+import com.dentalcare.api.models.Consumo;
+import com.dentalcare.api.models.DetallePrescripcion;
+import com.dentalcare.api.models.MedicamentoItem;
+import com.dentalcare.api.models.Prescripcion;
+import com.dentalcare.api.models.enums.EstadoCita;
+import com.dentalcare.api.models.enums.EstadoConsumo;
+import com.dentalcare.api.models.enums.TipoItem;
+import com.dentalcare.api.repositories.ConsumoRepository;
+import com.dentalcare.api.repositories.DetallePrescripcionRepository;
+import com.dentalcare.api.repositories.MedicamentoItemRepository;
+import com.dentalcare.api.repositories.PrescripcionRepository;
+
 
 @Service
 public class CitaService {
@@ -37,6 +49,19 @@ public class CitaService {
 
     @Autowired
     private PacienteRepository pacienteRepository;
+
+    @Autowired
+    private PrescripcionRepository prescripcionRepository;
+
+    @Autowired
+    private DetallePrescripcionRepository detallePrescripcionRepository;
+
+    @Autowired
+    private MedicamentoItemRepository medicamentoItemRepository;
+
+    @Autowired
+    private ConsumoRepository consumoRepository;
+
 
     // ====================================================
     // Metodos publicos para la logica de negocio de Citas
@@ -286,8 +311,78 @@ public class CitaService {
         Cita cita = citaRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Error: Cita no encontrada con el ID: " + id));
 
+        com.dentalcare.api.models.enums.EstadoCita estadoAnterior = cita.getEstadoCita();
         cita.setEstadoCita(nuevoEstado);
         Cita citaActualizada = citaRepository.save(cita);
+
+        if (nuevoEstado == com.dentalcare.api.models.enums.EstadoCita.COMPLETADA
+                && estadoAnterior != com.dentalcare.api.models.enums.EstadoCita.COMPLETADA) {
+            descargarInventarioPorPrescripcion(citaActualizada);
+        }
+
         return mapearAResponse(citaActualizada);
+    }
+
+    /**
+     * Descarga del inventario los medicamentos recetados durante la consulta de una cita.
+     * Registra los consumos con estado CONFIRMADO de forma idempotente para trazabilidad.
+     */
+    @Transactional
+    public void descargarInventarioPorPrescripcion(Cita cita) {
+        if (cita == null || cita.getIdCitas() == null) {
+            return;
+        }
+
+        prescripcionRepository.findByCita_IdCitas(cita.getIdCitas()).ifPresent(prescripcion -> {
+            List<DetallePrescripcion> detalles = detallePrescripcionRepository
+                    .findByPrescripcion_IdPrescripcion(prescripcion.getIdPrescripcion());
+
+            if (detalles == null || detalles.isEmpty()) {
+                return;
+            }
+
+            String mesActual = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"));
+
+            for (DetallePrescripcion detalle : detalles) {
+                MedicamentoItem med = detalle.getMedicamento();
+                if (med == null) {
+                    continue;
+                }
+
+                // Evitar doble descarga para el mismo medicamento en la misma cita
+                boolean yaDescargado = consumoRepository.existsByCita_IdCitasAndTipoItemAndItemId(
+                        cita.getIdCitas(), TipoItem.MEDICAMENTO, med.getId());
+
+                if (yaDescargado) {
+                    continue;
+                }
+
+                int cantidadADescontar = 1;
+
+                // Descontar existencias físicas en catálogo de medicamentos
+                int stockPrevio = med.getStockActual() != null ? med.getStockActual() : 0;
+                int nuevoStock = Math.max(0, stockPrevio - cantidadADescontar);
+                med.setStockActual(nuevoStock);
+                med.setActualizadoEn(LocalDateTime.now());
+                medicamentoItemRepository.save(med);
+
+                // Registrar el consumo confirmado para trazabilidad de suministros clínicos
+                Consumo consumo = new Consumo();
+                consumo.setTipoItem(TipoItem.MEDICAMENTO);
+                consumo.setItemId(med.getId());
+                consumo.setItemCodigo(med.getCodigo());
+                consumo.setItemNombre(med.getNombre());
+                consumo.setCita(cita);
+                consumo.setCantidad(cantidadADescontar);
+                consumo.setMesConsumo(mesActual);
+                consumo.setEstado(EstadoConsumo.CONFIRMADO);
+                consumo.setFechaConsumo(LocalDateTime.now());
+                consumo.setUsuarioRegistro(cita.getOdontologo() != null ? cita.getOdontologo().getUsuario() : null);
+                consumo.setNotas("Descargo por receta en consulta - Cita #" + cita.getIdCitas() +
+                        (detalle.getDosisPrescripcion() != null ? " (" + detalle.getDosisPrescripcion() + ")" : ""));
+
+                consumoRepository.save(consumo);
+            }
+        });
     }
 }
