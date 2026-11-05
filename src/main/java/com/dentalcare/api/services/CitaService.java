@@ -62,6 +62,9 @@ public class CitaService {
     @Autowired
     private ConsumoRepository consumoRepository;
 
+    @Autowired
+    private ListaEsperaService listaEsperaService;
+
 
     // ====================================================
     // Metodos publicos para la logica de negocio de Citas
@@ -315,6 +318,7 @@ public class CitaService {
         cita.setEstadoCita(nuevoEstado);
         Cita citaActualizada = citaRepository.save(cita);
 
+        if (nuevoEstado == com.dentalcare.api.models.enums.EstadoCita.CANCELADA) { try { listaEsperaService.evaluarCupoLiberadoPorCancelacion(citaActualizada); } catch (Exception ignored) {} }
         if (nuevoEstado == com.dentalcare.api.models.enums.EstadoCita.COMPLETADA
                 && estadoAnterior != com.dentalcare.api.models.enums.EstadoCita.COMPLETADA) {
             descargarInventarioPorPrescripcion(citaActualizada);

@@ -66,4 +66,13 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
             @Param("idCita") Integer idCita,
             @Param("horaInicio") LocalDateTime horaInicio,
             @Param("horaFin") LocalDateTime horaFin);
+
+    @Query("SELECT c FROM Cita c WHERE c.fechaCita = :fecha " +
+           "AND c.estadoCita = com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA " +
+           "AND c.horaInicioCita >= :desde AND c.horaInicioCita <= :hasta " +
+           "ORDER BY c.horaInicioCita ASC")
+    List<Cita> findCitasProximas(
+            @Param("fecha") LocalDate fecha,
+            @Param("desde") LocalDateTime desde,
+            @Param("hasta") LocalDateTime hasta);
 }
