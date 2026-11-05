@@ -15,6 +15,11 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
 
     List<Cita> findAllByOrderByFechaCitaAscHoraInicioCitaAsc();
 
+    @Query("SELECT c FROM Cita c WHERE c.fechaCita = :fecha " +
+           "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
+           "ORDER BY c.horaInicioCita ASC")
+    List<Cita> findCitasActivasPorFecha(@Param("fecha") LocalDate fecha);
+
     @Query("SELECT c FROM Cita c WHERE c.odontologo.idOdontologo = :idOdontologo " +
            "AND c.fechaCita = :fecha " +
            "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
