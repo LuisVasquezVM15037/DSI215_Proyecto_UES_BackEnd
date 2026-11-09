@@ -91,4 +91,13 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
            "WHERE c.fechaCita < :fechaActual " +
            "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE)")
     int actualizarCitasVencidasANoAsistio(@Param("fechaActual") LocalDate fechaActual);
+
+    @Query("SELECT c FROM Cita c " +
+           "LEFT JOIN FETCH c.paciente " +
+           "LEFT JOIN FETCH c.odontologo o " +
+           "LEFT JOIN FETCH o.usuario " +
+           "WHERE c.fechaCita BETWEEN :desde AND :hasta " +
+           "ORDER BY c.fechaCita ASC, c.horaInicioCita ASC")
+    List<Cita> findCitasEntreFechas(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
+
 }
