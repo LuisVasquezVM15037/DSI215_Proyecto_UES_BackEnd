@@ -106,4 +106,37 @@ public class InventarioController {
     public ResponseEntity<ConsumoResponseDTO> confirmarConsumo(@PathVariable Integer id) {
         return ResponseEntity.ok(inventarioService.confirmarConsumo(id));
     }
+
+    // =========================================================================
+    // ALERTAS DE STOCK OPERATIVAS (DENTALCARE-49: PBI-AsisDent-05)
+    // =========================================================================
+
+    @GetMapping("/alertas")
+    public ResponseEntity<List<AlertaStockDTO>> listarAlertas(
+            @RequestParam(required = false, defaultValue = "urgencia_desc") String orden) {
+        return ResponseEntity.ok(inventarioService.obtenerAlertasStock(orden));
+    }
+
+    @GetMapping("/alertas/top3")
+    public ResponseEntity<List<AlertaStockDTO>> obtenerTop3Alertas() {
+        return ResponseEntity.ok(inventarioService.obtenerTop3Criticos());
+    }
+
+    @GetMapping("/alertas/resumen")
+    public ResponseEntity<AlertaStockResumenDTO> obtenerResumenAlertas() {
+        return ResponseEntity.ok(inventarioService.obtenerResumenAlertas());
+    }
+
+    @GetMapping("/alertas/exportar-excel")
+    public ResponseEntity<byte[]> exportarAlertasExcel() {
+        byte[] excelBytes = inventarioService.generarReporteExcelAlertas();
+        String filename = "Alertas_Stock_DentalCare_" + 
+                java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")) + ".xlsx";
+
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(excelBytes);
+    }
+
 }

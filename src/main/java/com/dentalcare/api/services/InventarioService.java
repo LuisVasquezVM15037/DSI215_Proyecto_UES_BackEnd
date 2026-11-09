@@ -18,6 +18,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.dentalcare.api.models.enums.TipoNotificacion;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Locale;
+
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -50,6 +58,9 @@ public class InventarioService {
     @Autowired
     private UsuarioRepository usuarioRepository;
 
+    @Autowired
+    private NotificacionService notificacionService;
+
     // ── GESTIÓN DE MATERIALES (DENTALCARE-26) ──────────────────────────────────
 
     @Transactional
@@ -77,6 +88,7 @@ public class InventarioService {
         material.setDescripcion(dto.getDescripcion() != null ? dto.getDescripcion().trim() : null);
 
         Material guardado = materialRepository.save(material);
+            verificarYNotificarStockBajo("MATERIAL", material.getCodigo(), material.getNombre(), material.getStockActual(), material.getStockMinimo());
         return mapToMaterialResponseDTO(guardado);
     }
 
@@ -176,6 +188,7 @@ public class InventarioService {
         }
         med.setActualizadoEn(LocalDateTime.now());
         MedicamentoItem actualizado = medicamentoItemRepository.save(med);
+            verificarYNotificarStockBajo("MEDICAMENTO", med.getCodigo(), med.getNombre(), med.getStockActual(), med.getStockMinimo());
         return mapToMedicamentoResponseDTO(actualizado);
     }
 
@@ -372,6 +385,362 @@ public class InventarioService {
         if (act <= 0) return "CRITICO";
         if (act <= min) return "BAJO";
         return "OPTIMO";
+    }
+
+    
+    // =========================================================================
+    // ALERTAS DE STOCK OPERATIVAS Y AUDITORÍA GERENCIAL (DENTALCARE-49 & DENTALCARE-73)
+    // =========================================================================
+
+    public List<AlertaStockDTO> obtenerAlertasStock(String orden) {
+        List<AlertaStockDTO> alertas = new ArrayList<>();
+
+        // 1. Materiales bajo stock mínimo
+        List<Material> materialesBajo = materialRepository.findMaterialesBajoStockMinimo();
+        for (Material m : materialesBajo) {
+            int stockAct = (m.getStockActual() != null) ? m.getStockActual() : 0;
+            int stockMin = (m.getStockMinimo() != null) ? m.getStockMinimo() : 5;
+            int deficit = Math.max(0, stockMin - stockAct);
+            double cobertura = stockMin > 0 ? Math.round(((double) stockAct / stockMin) * 1000.0) / 10.0 : 0.0;
+
+            String urgencia;
+            if (stockAct <= 0) {
+                urgencia = "CRITICO";
+            } else if (cobertura <= 50.0) {
+                urgencia = "ALTA";
+            } else {
+                urgencia = "MEDIA";
+            }
+
+            int diasEst = stockAct <= 0 ? 0 : Math.max(1, (int) Math.ceil((double) stockAct * 1.5));
+
+            alertas.add(AlertaStockDTO.builder()
+                    .id(m.getId())
+                    .tipo("MATERIAL")
+                    .codigo(m.getCodigo())
+                    .nombre(m.getNombre())
+                    .unidadMedida(m.getUnidadMedida())
+                    .stockActual(stockAct)
+                    .stockMinimo(stockMin)
+                    .deficit(deficit)
+                    .porcentajeCobertura(cobertura)
+                    .nivelUrgencia(urgencia)
+                    .diasEstimadosAgotamiento(diasEst)
+                    .lote(null)
+                    .fechaVencimiento(null)
+                    .build());
+        }
+
+        // 2. Medicamentos bajo stock mínimo
+        List<MedicamentoItem> medicamentosBajo = medicamentoItemRepository.findMedicamentosBajoStockMinimo();
+        for (MedicamentoItem med : medicamentosBajo) {
+            int stockAct = (med.getStockActual() != null) ? med.getStockActual() : 0;
+            int stockMin = (med.getStockMinimo() != null) ? med.getStockMinimo() : 5;
+            int deficit = Math.max(0, stockMin - stockAct);
+            double cobertura = stockMin > 0 ? Math.round(((double) stockAct / stockMin) * 1000.0) / 10.0 : 0.0;
+
+            String urgencia;
+            if (stockAct <= 0) {
+                urgencia = "CRITICO";
+            } else if (cobertura <= 50.0) {
+                urgencia = "ALTA";
+            } else {
+                urgencia = "MEDIA";
+            }
+
+            int diasEst = stockAct <= 0 ? 0 : Math.max(1, (int) Math.ceil((double) stockAct * 1.2));
+
+            alertas.add(AlertaStockDTO.builder()
+                    .id(med.getId())
+                    .tipo("MEDICAMENTO")
+                    .codigo(med.getCodigo())
+                    .nombre(med.getNombre())
+                    .unidadMedida(med.getPresentacion())
+                    .stockActual(stockAct)
+                    .stockMinimo(stockMin)
+                    .deficit(deficit)
+                    .porcentajeCobertura(cobertura)
+                    .nivelUrgencia(urgencia)
+                    .diasEstimadosAgotamiento(diasEst)
+                    .lote(med.getLote())
+                    .fechaVencimiento(med.getFechaVencimiento())
+                    .build());
+        }
+
+        // Ordenamiento
+        String criterio = (orden != null) ? orden.trim().toLowerCase() : "urgencia_desc";
+        switch (criterio) {
+            case "deficit_desc":
+                alertas.sort(Comparator.comparing(AlertaStockDTO::getDeficit).reversed());
+                break;
+            case "nombre_asc":
+                alertas.sort(Comparator.comparing(a -> a.getNombre().toLowerCase()));
+                break;
+            case "cobertura_asc":
+                alertas.sort(Comparator.comparing(AlertaStockDTO::getPorcentajeCobertura));
+                break;
+            case "urgencia_desc":
+            default:
+                alertas.sort((a, b) -> {
+                    int pesoA = pesoUrgencia(a.getNivelUrgencia());
+                    int pesoB = pesoUrgencia(b.getNivelUrgencia());
+                    if (pesoA != pesoB) {
+                        return Integer.compare(pesoB, pesoA);
+                    }
+                    return Double.compare(a.getPorcentajeCobertura(), b.getPorcentajeCobertura());
+                });
+                break;
+        }
+
+        return alertas;
+    }
+
+    private int pesoUrgencia(String nivel) {
+        if ("CRITICO".equalsIgnoreCase(nivel)) return 3;
+        if ("ALTA".equalsIgnoreCase(nivel)) return 2;
+        return 1;
+    }
+
+    public List<AlertaStockDTO> obtenerTop3Criticos() {
+        return obtenerAlertasStock("cobertura_asc").stream()
+                .limit(3)
+                .collect(Collectors.toList());
+    }
+
+    public AlertaStockResumenDTO obtenerResumenAlertas() {
+        List<AlertaStockDTO> todas = obtenerAlertasStock("urgencia_desc");
+        int criticos = (int) todas.stream().filter(a -> "CRITICO".equalsIgnoreCase(a.getNivelUrgencia())).count();
+        int altos = (int) todas.stream().filter(a -> "ALTA".equalsIgnoreCase(a.getNivelUrgencia())).count();
+        int medios = (int) todas.stream().filter(a -> "MEDIA".equalsIgnoreCase(a.getNivelUrgencia())).count();
+
+        List<AlertaStockDTO> top3 = todas.stream()
+                .sorted(Comparator.comparing(AlertaStockDTO::getPorcentajeCobertura))
+                .limit(3)
+                .collect(Collectors.toList());
+
+        return AlertaStockResumenDTO.builder()
+                .totalAlertas(todas.size())
+                .criticos(criticos)
+                .altos(altos)
+                .medios(medios)
+                .top3(top3)
+                .alertas(todas)
+                .build();
+    }
+
+    public byte[] generarReporteExcelAlertas() {
+        List<AlertaStockDTO> alertas = obtenerAlertasStock("urgencia_desc");
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+
+            Sheet sheet = workbook.createSheet("Alertas de Stock");
+
+            // Estilos
+            Font titleFont = workbook.createFont();
+            titleFont.setBold(true);
+            titleFont.setFontHeightInPoints((short) 14);
+            titleFont.setColor(IndexedColors.DARK_BLUE.getIndex());
+
+            CellStyle titleStyle = workbook.createCellStyle();
+            titleStyle.setFont(titleFont);
+            titleStyle.setAlignment(HorizontalAlignment.CENTER);
+
+            Font subtitleFont = workbook.createFont();
+            subtitleFont.setItalic(true);
+            subtitleFont.setFontHeightInPoints((short) 10);
+            subtitleFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+
+            CellStyle subtitleStyle = workbook.createCellStyle();
+            subtitleStyle.setFont(subtitleFont);
+            subtitleStyle.setAlignment(HorizontalAlignment.CENTER);
+
+            // Estilo Encabezado de Columnas (Azul corporativo DentalCare)
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+
+            CellStyle headerStyle = workbook.createCellStyle();
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.ROYAL_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            headerStyle.setBorderTop(BorderStyle.THIN);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setBorderLeft(BorderStyle.THIN);
+            headerStyle.setBorderRight(BorderStyle.THIN);
+
+            // Estilos para datos
+            CellStyle baseStyle = workbook.createCellStyle();
+            baseStyle.setBorderTop(BorderStyle.THIN);
+            baseStyle.setBorderBottom(BorderStyle.THIN);
+            baseStyle.setBorderLeft(BorderStyle.THIN);
+            baseStyle.setBorderRight(BorderStyle.THIN);
+
+            CellStyle centerStyle = workbook.createCellStyle();
+            centerStyle.cloneStyleFrom(baseStyle);
+            centerStyle.setAlignment(HorizontalAlignment.CENTER);
+
+            // Estilo CRITICO
+            Font criticoFont = workbook.createFont();
+            criticoFont.setBold(true);
+            criticoFont.setColor(IndexedColors.DARK_RED.getIndex());
+            CellStyle criticoStyle = workbook.createCellStyle();
+            criticoStyle.cloneStyleFrom(centerStyle);
+            criticoStyle.setFont(criticoFont);
+            criticoStyle.setFillForegroundColor(IndexedColors.CORAL.getIndex());
+            criticoStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            // Estilo ALTA
+            Font altaFont = workbook.createFont();
+            altaFont.setBold(true);
+            altaFont.setColor(IndexedColors.BROWN.getIndex());
+            CellStyle altaStyle = workbook.createCellStyle();
+            altaStyle.cloneStyleFrom(centerStyle);
+            altaStyle.setFont(altaFont);
+            altaStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
+            altaStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            // Estilo MEDIA
+            Font mediaFont = workbook.createFont();
+            mediaFont.setColor(IndexedColors.DARK_BLUE.getIndex());
+            CellStyle mediaStyle = workbook.createCellStyle();
+            mediaStyle.cloneStyleFrom(centerStyle);
+            mediaStyle.setFont(mediaFont);
+
+            // TÍTULO (Fila 0 y 1)
+            Row row0 = sheet.createRow(0);
+            Cell cellTitle = row0.createCell(0);
+            cellTitle.setCellValue("DENTALCARE ERP - REPORTE DE ALERTAS Y STOCK CRÍTICO");
+            cellTitle.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 10));
+
+            Row row1 = sheet.createRow(1);
+            Cell cellSub = row1.createCell(0);
+            String fechaStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+            cellSub.setCellValue("Generado el: " + fechaStr + " | Cobertura de Insumos Bajo Stock Mínimo");
+            cellSub.setCellStyle(subtitleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(1, 1, 0, 10));
+
+            // ENCABEZADOS DE COLUMNA (Fila 3)
+            String[] headers = {
+                    "N°", "Tipo", "Código", "Nombre del Insumo", "Unidad / Presentación",
+                    "Stock Actual", "Stock Mínimo", "Déficit", "Cobertura", "Nivel Urgencia", "Días Est. Agotamiento"
+            };
+            Row headerRow = sheet.createRow(3);
+            headerRow.setHeightInPoints(24);
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // DATOS (Fila 4 en adelante)
+            int rowIndex = 4;
+            int correlativo = 1;
+            for (AlertaStockDTO a : alertas) {
+                Row row = sheet.createRow(rowIndex++);
+                row.setHeightInPoints(20);
+
+                Cell c0 = row.createCell(0);
+                c0.setCellValue(correlativo++);
+                c0.setCellStyle(centerStyle);
+
+                Cell c1 = row.createCell(1);
+                c1.setCellValue(a.getTipo());
+                c1.setCellStyle(centerStyle);
+
+                Cell c2 = row.createCell(2);
+                c2.setCellValue(a.getCodigo());
+                c2.setCellStyle(centerStyle);
+
+                Cell c3 = row.createCell(3);
+                c3.setCellValue(a.getNombre());
+                c3.setCellStyle(baseStyle);
+
+                Cell c4 = row.createCell(4);
+                c4.setCellValue(a.getUnidadMedida() != null ? a.getUnidadMedida() : "-");
+                c4.setCellStyle(centerStyle);
+
+                Cell c5 = row.createCell(5);
+                c5.setCellValue(a.getStockActual());
+                c5.setCellStyle(centerStyle);
+
+                Cell c6 = row.createCell(6);
+                c6.setCellValue(a.getStockMinimo());
+                c6.setCellStyle(centerStyle);
+
+                Cell c7 = row.createCell(7);
+                c7.setCellValue(a.getDeficit());
+                c7.setCellStyle(centerStyle);
+
+                Cell c8 = row.createCell(8);
+                c8.setCellValue(String.format(Locale.US, "%.1f%%", a.getPorcentajeCobertura()));
+                c8.setCellStyle(centerStyle);
+
+                Cell c9 = row.createCell(9);
+                c9.setCellValue(a.getNivelUrgencia());
+                if ("CRITICO".equalsIgnoreCase(a.getNivelUrgencia())) {
+                    c9.setCellStyle(criticoStyle);
+                } else if ("ALTA".equalsIgnoreCase(a.getNivelUrgencia())) {
+                    c9.setCellStyle(altaStyle);
+                } else {
+                    c9.setCellStyle(mediaStyle);
+                }
+
+                Cell c10 = row.createCell(10);
+                c10.setCellValue(a.getDiasEstimadosAgotamiento() != null ? a.getDiasEstimadosAgotamiento() + " días" : "N/D");
+                c10.setCellStyle(centerStyle);
+            }
+
+            // Ajuste automático de columnas
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+                sheet.setColumnWidth(i, sheet.getColumnWidth(i) + 500);
+            }
+
+            workbook.write(bos);
+            return bos.toByteArray();
+
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error al generar el reporte Excel de alertas", e);
+        }
+    }
+
+    public void verificarYNotificarStockBajo(String tipo, String codigo, String nombre, int stockActual, int stockMinimo) {
+        if (stockActual <= stockMinimo) {
+            String urgencia = (stockActual <= 0) ? "CRÍTICO (Agotado)" : "Stock Bajo";
+            String msg = String.format("El %s '%s' (%s) presenta %d unidades (Mínimo: %d). Nivel: %s.",
+                    tipo.toLowerCase(), nombre, codigo, stockActual, stockMinimo, urgencia);
+
+            try {
+                // Notificar al Asistente Odontólogo
+                notificacionService.crearNotificacion(
+                        null,
+                        "ASISTENTEODONTOLOGO",
+                        "Alerta de Stock: " + nombre,
+                        msg,
+                        TipoNotificacion.STOCK_CRITICO,
+                        null,
+                        "/inventario"
+                );
+
+                // Notificar a Gerencia
+                notificacionService.crearNotificacion(
+                        null,
+                        "GERENTE",
+                        "Supervisión de Stock: " + nombre,
+                        msg,
+                        TipoNotificacion.STOCK_CRITICO,
+                        null,
+                        "/gerencia/stock-critico"
+                );
+            } catch (Exception ex) {
+                System.err.println("Advertencia: No se pudo emitir la notificación de stock bajo: " + ex.getMessage());
+            }
+        }
     }
 
     private MaterialResponseDTO mapToMaterialResponseDTO(Material m) {
