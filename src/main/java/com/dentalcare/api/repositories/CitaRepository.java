@@ -2,6 +2,7 @@ package com.dentalcare.api.repositories;
 
 import com.dentalcare.api.models.Cita;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -80,4 +81,14 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
             @Param("fecha") LocalDate fecha,
             @Param("desde") LocalDateTime desde,
             @Param("hasta") LocalDateTime hasta);
+
+    /**
+     * Actualiza masivamente a NO_ASISTIO aquellas citas cuya fecha programada ya concluyó
+     * (fechaCita < fechaActual) y permanecen en estado PROGRAMADA o PENDIENTE.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Cita c SET c.estadoCita = com.dentalcare.api.models.enums.EstadoCita.NO_ASISTIO " +
+           "WHERE c.fechaCita < :fechaActual " +
+           "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE)")
+    int actualizarCitasVencidasANoAsistio(@Param("fechaActual") LocalDate fechaActual);
 }

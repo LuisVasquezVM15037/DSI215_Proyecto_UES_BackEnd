@@ -96,4 +96,20 @@ public class CitaController {
         CitaResponseDTO cita = citaService.obtenerPorId(id);
         return ResponseEntity.ok(cita);
     }
+
+    /**
+     * Sincronización de citas vencidas que concluyeron el día y no fueron atendidas ni reprogramadas.
+     * POST /api/citas/sincronizar-vencidas
+     */
+    @PostMapping("/sincronizar-vencidas")
+    public ResponseEntity<Map<String, Object>> sincronizarCitasVencidas() {
+        int total = citaService.actualizarCitasVencidasANoAsistio();
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "actualizadas", total,
+                "mensaje", total > 0
+                        ? "Se actualizaron " + total + " citas vencidas al estado 'NO_ASISTIO'."
+                        : "No se encontraron citas vencidas pendientes de actualizar."
+        ));
+    }
 }

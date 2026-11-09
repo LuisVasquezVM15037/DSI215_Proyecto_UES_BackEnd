@@ -1,6 +1,8 @@
 package com.dentalcare.api.services;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
+import com.dentalcare.api.models.enums.TipoNotificacion;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -65,12 +67,58 @@ public class CitaService {
     @Autowired
     private ListaEsperaService listaEsperaService;
 
+    @Autowired
+    private NotificacionService notificacionService;
+
 
     // ====================================================
     // Metodos publicos para la logica de negocio de Citas
     // ====================================================
 
+        /**
+     * Regla de Negocio Automática:
+     * Cuando una cita programada para el día actual pasa de las 11:59 PM (el día ha concluido)
+     * y el paciente no asistió ni se reprogramó, cambia automáticamente a estado NO_ASISTIO.
+     *
+     * @return Cantidad de citas actualizadas al estado NO_ASISTIO.
+     */
+    @Transactional
+    public int actualizarCitasVencidasANoAsistio() {
+        ZoneId zonaClinica;
+        try {
+            zonaClinica = ZoneId.of("America/El_Salvador");
+        } catch (Exception e) {
+            zonaClinica = ZoneId.systemDefault();
+        }
+
+        LocalDate hoy = LocalDate.now(zonaClinica);
+        int total = citaRepository.actualizarCitasVencidasANoAsistio(hoy);
+
+        if (total > 0) {
+            try {
+                String titulo = "Citas marcadas como No Asistió";
+                String mensaje = String.format("Se actualizaron automáticamente %d cita(s) con fecha concluida al estado 'No asistió'.", total);
+                notificacionService.crearNotificacion(
+                        null,
+                        "RECEPCIONISTA",
+                        titulo,
+                        mensaje,
+                        TipoNotificacion.CITA_PROXIMA,
+                        null,
+                        "/agenda"
+                );
+            } catch (Exception ignored) {
+                // Silencioso para no romper transacciones de consulta
+            }
+        }
+
+        return total;
+    }
+
     public List<CitaResponseDTO> obtenerTodas() {
+        try {
+            actualizarCitasVencidasANoAsistio();
+        } catch (Exception ignored) {}
         List<Cita> citas = citaRepository.findAllByOrderByFechaCitaAscHoraInicioCitaAsc();
         return citas.stream()
                 .map(this::mapearAResponse)
@@ -262,6 +310,9 @@ public class CitaService {
     }
 
     public CitaResponseDTO obtenerPorId(Integer id) {
+        try {
+            actualizarCitasVencidasANoAsistio();
+        } catch (Exception ignored) {}
         Cita cita = citaRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Error: Cita no encontrada con el ID: " + id));
         return mapearAResponse(cita);
