@@ -52,17 +52,18 @@ public class NotificacionService {
     }
 
     public ResumenNotificacionesDto obtenerResumen(Integer usuarioId, String rol, Boolean soloNoLeidas, Integer limit) {
+        String rolNormalizado = normalizarRol(rol);
         int limiteEfectivo = (limit != null && limit > 0) ? limit : 20;
         Pageable pageable = PageRequest.of(0, limiteEfectivo);
 
         List<Notificacion> lista;
         if (Boolean.TRUE.equals(soloNoLeidas)) {
-            lista = notificacionRepository.buscarNoLeidasPorUsuarioORol(usuarioId, rol, pageable);
+            lista = notificacionRepository.buscarNoLeidasPorUsuarioORol(usuarioId, rolNormalizado, pageable);
         } else {
-            lista = notificacionRepository.buscarPorUsuarioORol(usuarioId, rol, pageable);
+            lista = notificacionRepository.buscarPorUsuarioORol(usuarioId, rolNormalizado, pageable);
         }
 
-        long noLeidas = notificacionRepository.contarNoLeidas(usuarioId, rol);
+        long noLeidas = notificacionRepository.contarNoLeidas(usuarioId, rolNormalizado);
 
         List<NotificacionResponseDto> dtos = lista.stream()
                 .map(this::mapearADto)
@@ -75,7 +76,7 @@ public class NotificacionService {
     }
 
     public long contarNoLeidas(Integer usuarioId, String rol) {
-        return notificacionRepository.contarNoLeidas(usuarioId, rol);
+        return notificacionRepository.contarNoLeidas(usuarioId, normalizarRol(rol));
     }
 
     @Transactional
@@ -89,7 +90,14 @@ public class NotificacionService {
 
     @Transactional
     public int marcarTodasComoLeidas(Integer usuarioId, String rol) {
-        return notificacionRepository.marcarTodasComoLeidas(usuarioId, rol);
+        return notificacionRepository.marcarTodasComoLeidas(usuarioId, normalizarRol(rol));
+    }
+
+    private String normalizarRol(String rol) {
+        if (rol == null || rol.trim().isEmpty()) {
+            return null;
+        }
+        return rol.trim();
     }
 
     private NotificacionResponseDto mapearADto(Notificacion n) {

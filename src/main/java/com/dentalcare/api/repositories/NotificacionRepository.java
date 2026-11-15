@@ -15,7 +15,7 @@ public interface NotificacionRepository extends JpaRepository<Notificacion, Inte
 
     @Query("SELECT n FROM Notificacion n WHERE " +
            "(:usuarioId IS NOT NULL AND n.usuario.idUsuario = :usuarioId) " +
-           "OR (n.usuario IS NULL AND (:rol IS NULL OR n.rolDestinatario = :rol OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL)) " +
+           "OR (n.usuario IS NULL AND (:rol IS NULL OR UPPER(:rol) = 'ADMIN' OR UPPER(n.rolDestinatario) = UPPER(:rol) OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL)) " +
            "ORDER BY n.fechaCreacion DESC")
     List<Notificacion> buscarPorUsuarioORol(@Param("usuarioId") Integer usuarioId, 
                                            @Param("rol") String rol, 
@@ -23,7 +23,7 @@ public interface NotificacionRepository extends JpaRepository<Notificacion, Inte
 
     @Query("SELECT n FROM Notificacion n WHERE n.leida = false AND (" +
            "(:usuarioId IS NOT NULL AND n.usuario.idUsuario = :usuarioId) " +
-           "OR (n.usuario IS NULL AND (:rol IS NULL OR n.rolDestinatario = :rol OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL))) " +
+           "OR (n.usuario IS NULL AND (:rol IS NULL OR UPPER(:rol) = 'ADMIN' OR UPPER(n.rolDestinatario) = UPPER(:rol) OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL))) " +
            "ORDER BY n.fechaCreacion DESC")
     List<Notificacion> buscarNoLeidasPorUsuarioORol(@Param("usuarioId") Integer usuarioId, 
                                                    @Param("rol") String rol, 
@@ -31,12 +31,12 @@ public interface NotificacionRepository extends JpaRepository<Notificacion, Inte
 
     @Query("SELECT COUNT(n) FROM Notificacion n WHERE n.leida = false AND (" +
            "(:usuarioId IS NOT NULL AND n.usuario.idUsuario = :usuarioId) " +
-           "OR (n.usuario IS NULL AND (:rol IS NULL OR n.rolDestinatario = :rol OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL)))")
+           "OR (n.usuario IS NULL AND (:rol IS NULL OR UPPER(:rol) = 'ADMIN' OR UPPER(n.rolDestinatario) = UPPER(:rol) OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL)))")
     long contarNoLeidas(@Param("usuarioId") Integer usuarioId, @Param("rol") String rol);
 
     @Modifying
     @Query("UPDATE Notificacion n SET n.leida = true WHERE n.leida = false AND (" +
            "(:usuarioId IS NOT NULL AND n.usuario.idUsuario = :usuarioId) " +
-           "OR (n.usuario IS NULL AND (:rol IS NULL OR n.rolDestinatario = :rol OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL)))")
+           "OR (n.usuario IS NULL AND (:rol IS NULL OR UPPER(:rol) = 'ADMIN' OR UPPER(n.rolDestinatario) = UPPER(:rol) OR n.rolDestinatario = 'TODOS' OR n.rolDestinatario IS NULL)))")
     int marcarTodasComoLeidas(@Param("usuarioId") Integer usuarioId, @Param("rol") String rol);
 }
