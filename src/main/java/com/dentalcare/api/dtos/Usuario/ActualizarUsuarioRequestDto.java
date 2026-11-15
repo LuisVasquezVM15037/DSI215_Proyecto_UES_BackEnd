@@ -36,4 +36,5 @@ public class ActualizarUsuarioRequestDto {
 
     private String especialidadOdontologo;
     private String jvpoId;
+    private String fotoPerfilUrl;
 }

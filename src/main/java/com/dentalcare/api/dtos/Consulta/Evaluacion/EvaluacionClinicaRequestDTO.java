@@ -1,5 +1,6 @@
 package com.dentalcare.api.dtos.Consulta.Evaluacion;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -12,6 +13,7 @@ import lombok.Data;
 public class EvaluacionClinicaRequestDTO {
 
     @NotNull(message = "El id de la cita es obligatorio.")
+    @JsonAlias({"idCitas", "id_cita", "id_citas"})
     private Integer idCita;
 
     @NotBlank(message = "El diagnostico es obligatorio.")

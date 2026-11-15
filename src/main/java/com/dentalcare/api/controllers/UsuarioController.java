@@ -49,6 +49,14 @@ public class UsuarioController {
         return ResponseEntity.ok(usuarioService.listarUsuarios());
     }
 
+    // GET /api/usuarios/perfil/{username} - Obtener perfil de usuario
+    @GetMapping("/perfil/{username}")
+    public ResponseEntity<UsuarioResponseDto> obtenerPerfil(@PathVariable String username) {
+        return usuarioService.obtenerPerfilPorUsername(username)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     // PUT /api/usuarios/{id} - Actualizar usuario
     @PutMapping("/{id}")
     public ResponseEntity<?> actualizarUsuario(@PathVariable Integer id,

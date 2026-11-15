@@ -21,4 +21,6 @@ public class TratamientoRequestDTO {
 
     @NotNull(message = "El costo es obligatorio.")
     private BigDecimal costoTratamiento;
+
+    private Boolean esPorPieza = true;
 }

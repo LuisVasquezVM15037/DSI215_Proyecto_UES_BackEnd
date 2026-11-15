@@ -111,6 +111,26 @@ public class SeguridadMantenimientoService {
                 .build();
     }
 
+    @Transactional
+    public Map<String, Object> solicitarRecuperacionPassword(String identificador) {
+        if (identificador == null || identificador.trim().isBlank()) {
+            throw new RuntimeException("Debe ingresar su correo electrónico institucional o nombre de usuario.");
+        }
+        Usuario usuario = usuarioRepository.findByUsernameOrEmail(identificador.trim())
+                .orElseThrow(() -> new RuntimeException("No se encontró ningún usuario registrado con el correo o usuario ingresado."));
+
+        RestablecerPasswordResponseDTO res = restablecerPassword(usuario.getIdUsuario(), "Auto-Servicio (Olvide mi password)");
+
+        return Map.of(
+                "status", "success",
+                "message", "Se han generado las credenciales de recuperación para su cuenta.",
+                "email", usuario.getEmailUsuario(),
+                "enlaceRestablecimiento", res.getEnlaceRestablecimiento(),
+                "token", res.getToken(),
+                "claveProvisional", res.getClaveProvisional()
+        );
+    }
+
     public Map<String, Object> validarToken(String token) {
         PasswordResetToken resetToken = passwordResetRepository.findByTokenAndUtilizadoFalse(token)
                 .orElseThrow(() -> new RuntimeException("El token proporcionado no existe o ya fue utilizado."));

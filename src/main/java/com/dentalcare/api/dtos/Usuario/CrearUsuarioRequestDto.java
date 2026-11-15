@@ -33,4 +33,5 @@ public class CrearUsuarioRequestDto {
 
     private String especialidadOdontologo;
     private String jvpoId;
+    private String fotoPerfilUrl;
 }

@@ -233,10 +233,12 @@ public class CitaService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La hora de inicio debe ser anterior a la hora de fin.");
         }
 
+        LocalDate fechaEfectiva = (fecha != null) ? fecha : horaInicio.toLocalDate();
+
         // 1. Conflicto de horario con el Odontólogo
         List<Cita> conflictosOdont = (idCitaExcluir != null)
-                ? citaRepository.findConflictosOdontologoExcluyendo(idOdontologo, fecha, idCitaExcluir, horaInicio, horaFin)
-                : citaRepository.findConflictosOdontologo(idOdontologo, fecha, horaInicio, horaFin);
+                ? citaRepository.findConflictosOdontologoExcluyendo(idOdontologo, fechaEfectiva, idCitaExcluir, horaInicio, horaFin)
+                : citaRepository.findConflictosOdontologo(idOdontologo, fechaEfectiva, horaInicio, horaFin);
 
         if (!conflictosOdont.isEmpty()) {
             Cita c = conflictosOdont.get(0);
@@ -252,8 +254,8 @@ public class CitaService {
         // 2. Conflicto de horario con el mismo Paciente
         if (idPaciente != null) {
             List<Cita> conflictosPac = (idCitaExcluir != null)
-                    ? citaRepository.findConflictosPacienteExcluyendo(idPaciente, fecha, idCitaExcluir, horaInicio, horaFin)
-                    : citaRepository.findConflictosPaciente(idPaciente, fecha, horaInicio, horaFin);
+                    ? citaRepository.findConflictosPacienteExcluyendo(idPaciente, fechaEfectiva, idCitaExcluir, horaInicio, horaFin)
+                    : citaRepository.findConflictosPaciente(idPaciente, fechaEfectiva, horaInicio, horaFin);
 
             if (!conflictosPac.isEmpty()) {
                 Cita c = conflictosPac.get(0);

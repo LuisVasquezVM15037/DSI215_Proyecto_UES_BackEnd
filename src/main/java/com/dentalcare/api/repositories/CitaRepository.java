@@ -17,13 +17,13 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
     List<Cita> findAllByOrderByFechaCitaAscHoraInicioCitaAsc();
 
     @Query("SELECT c FROM Cita c WHERE c.fechaCita = :fecha " +
-           "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
+           "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE, com.dentalcare.api.models.enums.EstadoCita.EN_PROGRESO) " +
            "ORDER BY c.horaInicioCita ASC")
     List<Cita> findCitasActivasPorFecha(@Param("fecha") LocalDate fecha);
 
     @Query("SELECT c FROM Cita c WHERE c.odontologo.idOdontologo = :idOdontologo " +
            "AND c.fechaCita = :fecha " +
-           "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
+           "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE, com.dentalcare.api.models.enums.EstadoCita.EN_PROGRESO) " +
            "ORDER BY c.horaInicioCita ASC")
     List<Cita> findCitasActivasPorOdontologoYFecha(
             @Param("idOdontologo") Integer idOdontologo,
@@ -31,7 +31,7 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
 
     @Query("SELECT c FROM Cita c WHERE c.odontologo.idOdontologo = :idOdontologo " +
            "AND c.fechaCita = :fecha " +
-           "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
+           "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE, com.dentalcare.api.models.enums.EstadoCita.EN_PROGRESO) " +
            "AND c.horaInicioCita < :horaFin AND c.horaFinCita > :horaInicio")
     List<Cita> findConflictosOdontologo(
             @Param("idOdontologo") Integer idOdontologo,
@@ -42,7 +42,7 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
     @Query("SELECT c FROM Cita c WHERE c.odontologo.idOdontologo = :idOdontologo " +
            "AND c.fechaCita = :fecha " +
            "AND c.idCitas != :idCita " +
-           "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
+           "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE, com.dentalcare.api.models.enums.EstadoCita.EN_PROGRESO) " +
            "AND c.horaInicioCita < :horaFin AND c.horaFinCita > :horaInicio")
     List<Cita> findConflictosOdontologoExcluyendo(
             @Param("idOdontologo") Integer idOdontologo,
@@ -53,7 +53,7 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
 
     @Query("SELECT c FROM Cita c WHERE c.paciente.idPaciente = :idPaciente " +
            "AND c.fechaCita = :fecha " +
-           "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
+           "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE, com.dentalcare.api.models.enums.EstadoCita.EN_PROGRESO) " +
            "AND c.horaInicioCita < :horaFin AND c.horaFinCita > :horaInicio")
     List<Cita> findConflictosPaciente(
             @Param("idPaciente") Integer idPaciente,
@@ -64,7 +64,7 @@ public interface CitaRepository extends JpaRepository<Cita, Integer> {
     @Query("SELECT c FROM Cita c WHERE c.paciente.idPaciente = :idPaciente " +
            "AND c.fechaCita = :fecha " +
            "AND c.idCitas != :idCita " +
-           "AND c.estadoCita != com.dentalcare.api.models.enums.EstadoCita.CANCELADA " +
+           "AND c.estadoCita IN (com.dentalcare.api.models.enums.EstadoCita.PROGRAMADA, com.dentalcare.api.models.enums.EstadoCita.PENDIENTE, com.dentalcare.api.models.enums.EstadoCita.EN_PROGRESO) " +
            "AND c.horaInicioCita < :horaFin AND c.horaFinCita > :horaInicio")
     List<Cita> findConflictosPacienteExcluyendo(
             @Param("idPaciente") Integer idPaciente,

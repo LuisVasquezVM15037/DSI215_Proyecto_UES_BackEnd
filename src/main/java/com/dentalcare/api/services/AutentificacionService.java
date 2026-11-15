@@ -85,6 +85,6 @@ public class AutentificacionService {
 
         boolean debeCambiar = Boolean.TRUE.equals(usuario.getDebeCambiarPassword());
 
-        return new LoginResponseDto(token, nombreCompleto, nombreRol, debeCambiar, usuario.getUsernameUsuario());
+        return new LoginResponseDto(token, nombreCompleto, nombreRol, debeCambiar, usuario.getUsernameUsuario(), usuario.getFotoPerfilUrl());
     }
 }

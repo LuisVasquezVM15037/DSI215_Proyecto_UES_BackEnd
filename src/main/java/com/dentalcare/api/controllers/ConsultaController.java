@@ -148,4 +148,10 @@ public ResponseEntity<?> actualizarEstadoHallazgo(
                     .body(Map.of("message", ex.getMessage()));
         }
     }
+
+    // GET /api/consulta/paciente/{idPaciente}/tratamientos-pendientes - Trazabilidad de tratamientos pendientes (Punto 5)
+    @GetMapping("/paciente/{idPaciente}/tratamientos-pendientes")
+    public ResponseEntity<List<PlanTratamientoResponseDTO>> obtenerTratamientosPendientesPaciente(@PathVariable Integer idPaciente) {
+        return ResponseEntity.ok(consultaService.obtenerTratamientosPendientesPaciente(idPaciente));
+    }
 }

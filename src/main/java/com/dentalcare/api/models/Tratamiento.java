@@ -20,4 +20,11 @@ public class Tratamiento {
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal costoTratamiento;
+
+    @Column(name = "es_por_pieza", nullable = true)
+    private Boolean esPorPieza = true;
+
+    public Boolean getEsPorPieza() {
+        return esPorPieza == null ? true : esPorPieza;
+    }
 }

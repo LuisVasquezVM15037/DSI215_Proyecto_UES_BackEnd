@@ -68,6 +68,7 @@ public class UsuarioService {
         nuevo.setPassworUsuario(passwordEncoder.encode(request.getPassword()));
         nuevo.setEsActivo(true);
         nuevo.setRol(rol);
+        nuevo.setFotoPerfilUrl(request.getFotoPerfilUrl());
         Usuario usuario = usuarioRepository.save(nuevo);
 
         if (esOdontologo) {
@@ -122,6 +123,9 @@ public class UsuarioService {
         usuario.setUsernameUsuario(request.getUsernameUsuario());
         usuario.setEsActivo(request.getEsActivo());
         usuario.setRol(rol);
+        if (request.getFotoPerfilUrl() != null) {
+            usuario.setFotoPerfilUrl(request.getFotoPerfilUrl());
+        }
 
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             usuario.setPassworUsuario(passwordEncoder.encode(request.getPassword()));
@@ -141,12 +145,6 @@ public class UsuarioService {
             odontologo.setJvpoId(request.getJvpoId());
             odontologoRepository.save(odontologo);
         }
-        // NOTA: si el usuario DEJA de ser Odontologo, su registro en `odontologo`
-        // no se borra (para no romper citas ya asociadas a ese id_odontologo).
-        // Queda huerfano pero invisible en el listado gracias al filtro
-        // findByUsuario_EsActivoTrue si tambien lo desactivas; si solo cambias
-        // el rol sin desactivarlo, seguiria apareciendo en el dropdown. Aviso
-        // aparte si quieres que resolvamos ese caso tambien.
 
         return toResponseDto(actualizado);
     }
@@ -165,6 +163,12 @@ public class UsuarioService {
                 .stream()
                 .map(this::toResponseDto)
                 .collect(Collectors.toList());
+    }
+
+    // OBTENER perfil de usuario por username o email
+    public Optional<UsuarioResponseDto> obtenerPerfilPorUsername(String username) {
+        return usuarioRepository.findByUsernameOrEmail(username)
+                .map(this::toResponseDto);
     }
 
     // Convierte entidad a DTO de respuesta (sin exponer password)
@@ -189,6 +193,7 @@ public class UsuarioService {
                 usuario.getEsActivo(),
                 usuario.getRol().getNombreRol().name(),
                 especialidad,
-                jvpoId);
+                jvpoId,
+                usuario.getFotoPerfilUrl());
     }
 }

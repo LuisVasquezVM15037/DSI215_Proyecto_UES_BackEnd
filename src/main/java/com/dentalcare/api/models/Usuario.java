@@ -32,6 +32,9 @@ public class Usuario {
     @Column(nullable = false)
     private String apellidoUsuario;
 
+    @Column(name = "foto_perfil_url", length = 500)
+    private String fotoPerfilUrl;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_rol", nullable = false)
     private Rol rol;

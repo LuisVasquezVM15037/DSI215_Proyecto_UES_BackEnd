@@ -119,11 +119,31 @@ public class ConsultaService {
                 Tratamiento tratamiento = tratamientoRepository.findById(request.getIdTratamiento())
                                 .orElseThrow(() -> new RuntimeException("Tratamiento no encontrado."));
 
+                Boolean esTratamientoPorPieza = tratamiento.getEsPorPieza();
+                if (esTratamientoPorPieza == null) {
+                    String nombre = tratamiento.getNombreTratamiento() != null ? tratamiento.getNombreTratamiento().toLowerCase() : "";
+                    boolean pareceGeneral = nombre.contains("limpieza") || nombre.contains("profilaxis")
+                            || nombre.contains("general") || nombre.contains("diagnostico")
+                            || nombre.contains("blanqueamiento") || nombre.contains("fluor");
+                    esTratamientoPorPieza = !pareceGeneral;
+                    tratamiento.setEsPorPieza(esTratamientoPorPieza);
+                    tratamientoRepository.save(tratamiento);
+                }
+
+                boolean tienePieza = request.getPiezaDental() != null && request.getPiezaDental() > 0;
+
+                if (esTratamientoPorPieza && !tienePieza) {
+                    throw new RuntimeException("El tratamiento seleccionado ('" + tratamiento.getNombreTratamiento() + "') requiere asociar una pieza dental específica en el odontograma.");
+                }
+                if (!esTratamientoPorPieza && tienePieza) {
+                    throw new RuntimeException("El tratamiento seleccionado ('" + tratamiento.getNombreTratamiento() + "') es de carácter general (toda la boca) y no debe registrarse asociado a una pieza individual.");
+                }
+
                 PlanTratamiento plan = new PlanTratamiento();
                 plan.setEvaluacionClinica(evaluacion);
                 plan.setTratamiento(tratamiento);
-                // Si es un tratamiento general (null), usamos 0 como valor centinela para compatibilidad con BDs donde la columna es NOT NULL
-                plan.setPiezaDental(request.getPiezaDental() != null ? request.getPiezaDental() : 0);
+                // Si es un tratamiento general, piezaDental se guarda como null
+                plan.setPiezaDental(esTratamientoPorPieza ? request.getPiezaDental() : null);
 
                 // Si no viene estado, usamos PENDIENTE como valor por defecto
                 try {
@@ -280,22 +300,33 @@ public class ConsultaService {
 
         public List<TratamientoResponseDTO> listarTratamientos() {
                 return tratamientoRepository.findAll().stream()
-                                .map(t -> new TratamientoResponseDTO(
+                                .map(t -> {
+                                    Boolean esPorPieza = t.getEsPorPieza();
+                                    if (esPorPieza == null) {
+                                        String nombre = t.getNombreTratamiento() != null ? t.getNombreTratamiento().toLowerCase() : "";
+                                        boolean pareceGeneral = nombre.contains("limpieza") || nombre.contains("profilaxis")
+                                                || nombre.contains("general") || nombre.contains("diagnostico")
+                                                || nombre.contains("blanqueamiento") || nombre.contains("fluor");
+                                        esPorPieza = !pareceGeneral;
+                                    }
+                                    return new TratamientoResponseDTO(
                                                 t.getIdTratamiento(),
                                                 t.getNombreTratamiento(),
                                                 t.getDescripcionTratamiento(),
-                                                t.getCostoTratamiento()))
+                                                t.getCostoTratamiento(),
+                                                esPorPieza);
+                                })
                                 .collect(Collectors.toList());
         }
 
         @Transactional
         public TratamientoResponseDTO crearTratamiento(TratamientoRequestDTO request) {
 
-                // Construimos la entidad con los datos del request
                 Tratamiento nuevo = new Tratamiento();
                 nuevo.setNombreTratamiento(request.getNombreTratamiento());
                 nuevo.setDescripcionTratamiento(request.getDescripcionTratamiento());
                 nuevo.setCostoTratamiento(request.getCostoTratamiento());
+                nuevo.setEsPorPieza(request.getEsPorPieza() != null ? request.getEsPorPieza() : true);
 
                 Tratamiento guardado = tratamientoRepository.save(nuevo);
 
@@ -303,20 +334,40 @@ public class ConsultaService {
                                 guardado.getIdTratamiento(),
                                 guardado.getNombreTratamiento(),
                                 guardado.getDescripcionTratamiento(),
-                                guardado.getCostoTratamiento());
+                                guardado.getCostoTratamiento(),
+                                guardado.getEsPorPieza());
         }
 
         public List<MedicamentoResponseDTO> listarMedicamentos() {
-                return medicamentoItemRepository.findAllByOrderByNombreAsc().stream()
-                                .map(m -> new MedicamentoResponseDTO(
-                                                m.getId(),
-                                                m.getNombre(),
-                                                (m.getComponenteActivo() != null && !m.getComponenteActivo().isBlank())
-                                                                ? m.getComponenteActivo() : m.getCodigo(),
-                                                (m.getConcentracion() != null && !m.getConcentracion().isBlank())
-                                                                ? m.getConcentracion() : m.getPresentacion(),
-                                                m.getCostoMedicamento() != null ? m.getCostoMedicamento() : BigDecimal.ZERO,
-                                                m.getStockActual()))
+                List<MedicamentoItem> todos = medicamentoItemRepository.findAllByOrderByNombreAsc();
+                java.util.Map<String, MedicamentoResponseDTO> mapaUnicos = new java.util.LinkedHashMap<>();
+                for (MedicamentoItem m : todos) {
+                    String comp = (m.getComponenteActivo() != null && !m.getComponenteActivo().isBlank())
+                            ? m.getComponenteActivo().trim().toLowerCase() : (m.getCodigo() != null ? m.getCodigo().trim().toLowerCase() : "");
+                    String conc = (m.getConcentracion() != null && !m.getConcentracion().isBlank())
+                            ? m.getConcentracion().trim().toLowerCase() : (m.getPresentacion() != null ? m.getPresentacion().trim().toLowerCase() : "");
+                    String clave = m.getNombre().trim().toLowerCase() + "||" + conc + "||" + comp;
+
+                    if (!mapaUnicos.containsKey(clave)) {
+                        mapaUnicos.put(clave, new MedicamentoResponseDTO(
+                                m.getId(),
+                                m.getNombre().trim(),
+                                (m.getComponenteActivo() != null && !m.getComponenteActivo().isBlank()) ? m.getComponenteActivo() : m.getCodigo(),
+                                (m.getConcentracion() != null && !m.getConcentracion().isBlank()) ? m.getConcentracion() : m.getPresentacion(),
+                                m.getCostoMedicamento() != null ? m.getCostoMedicamento() : BigDecimal.ZERO,
+                                m.getStockActual()
+                        ));
+                    }
+                }
+                return new java.util.ArrayList<>(mapaUnicos.values());
+        }
+
+        /**
+         * Obtiene los tratamientos pendientes de citas previas del paciente para trazabilidad historica (Punto 5).
+         */
+        public List<PlanTratamientoResponseDTO> obtenerTratamientosPendientesPaciente(Integer idPaciente) {
+                return planTratamientoRepository.findPendientesPorPaciente(idPaciente).stream()
+                                .map(this::toResponseDTO)
                                 .collect(Collectors.toList());
         }
 
@@ -326,6 +377,7 @@ public class ConsultaService {
 
         private PlanTratamientoResponseDTO toResponseDTO(PlanTratamiento plan) {
                 Integer pieza = (plan.getPiezaDental() == null || plan.getPiezaDental() == 0) ? null : plan.getPiezaDental();
+                Boolean esPorPieza = plan.getTratamiento() != null ? plan.getTratamiento().getEsPorPieza() : true;
                 return new PlanTratamientoResponseDTO(
                                 plan.getIdPlanTratamiento(),
                                 pieza,
@@ -333,7 +385,8 @@ public class ConsultaService {
                                 plan.getTratamiento().getIdTratamiento(),
                                 plan.getTratamiento().getNombreTratamiento(),
                                 plan.getTratamiento().getDescripcionTratamiento(),
-                                plan.getTratamiento().getCostoTratamiento().floatValue());
+                                plan.getTratamiento().getCostoTratamiento().floatValue(),
+                                esPorPieza);
         }
 
         private PrescripcionResponseDTO mapearPrescripcion(Prescripcion p, List<DetallePrescripcion> detalles) {

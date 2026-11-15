@@ -25,11 +25,18 @@ public class LoginResponseDto {
 
     private String username;
 
+    private String fotoPerfilUrl;
+
     public LoginResponseDto(String token, String nombreCompleto, String rol) {
         this.token = token;
         this.nombreCompleto = nombreCompleto;
         this.rol = rol;
         this.debeCambiarPassword = false;
         this.username = "";
+        this.fotoPerfilUrl = null;
+    }
+
+    public LoginResponseDto(String token, String nombreCompleto, String rol, Boolean debeCambiarPassword, String username) {
+        this(token, nombreCompleto, rol, debeCambiarPassword, username, null);
     }
 }
